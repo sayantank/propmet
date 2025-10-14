@@ -1,0 +1,18 @@
+{
+  "name": "propmet",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@biomejs/biome": "^2.2.6",
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@meteora-ag/dlmm": "^1.7.5",
+    "@pythnetwork/hermes-client": "^2.0.0",
+    "@solana/web3.js": "^1.98.4"
+  }
+}
