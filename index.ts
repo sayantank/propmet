@@ -1,4 +1,4 @@
-import DLMM, { type BinLiquidity } from "@meteora-ag/dlmm";
+import DLMM, { type BinLiquidity, type LbPosition } from "@meteora-ag/dlmm";
 
 import { HermesClient } from "@pythnetwork/hermes-client";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
@@ -71,18 +71,23 @@ eventSource.onmessage = async (event) => {
 	const expo = parsed.price.expo;
 	const oraclePrice = Number(price) * 10 ** expo;
 
-	const [activeBin] = await Promise.all([
+	const [binForPrice, activeBin, currentPosition] = await Promise.all([
+		dlmmPool.getBinIdFromPrice(oraclePrice, true),
 		dlmmPool.getActiveBin(),
+		bins.positionAccount != null
+			? dlmmPool.getPosition(bins.positionAccount).catch(() => undefined)
+			: Promise.resolve(undefined),
 		// Use this for opening position just on the bin according to the price ??
 		// dlmmPool.getBinIdFromPrice(oraclePrice, true),
-		// How tf do i get the user positions just for jup/usdc pool, the types don't have shit smh
+		// How tf do i get the user positions just for jup/usdc pool, the types don't have shit
+		// dlmmPool.getPositionsByUserAndLbPair(user.publicKey),
 		// dlmmPool.getPositionsByUserAndLbPair(user.publicKey),
 	]);
 
-	console.log(
-		"Discrepancy between bin price and oracle price",
-		oraclePrice - Number(activeBin.price) / Number(activeBin.price),
-	);
+	console.log("Oracle Price", oraclePrice);
+	console.log("Opening Price", bins.openingPrice);
+	const drift = oraclePrice - (bins.openingPrice ?? oraclePrice);
+	console.log("Drift", drift);
 
 	if (!isUpdatingPosition) {
 		try {
@@ -91,8 +96,10 @@ eventSource.onmessage = async (event) => {
 				oraclePrice,
 				lastPrice,
 				bins,
+				binForPrice,
 				activeBin,
 				lastRebalanceTimestamp,
+				currentPosition,
 			);
 
 			if (resultPosition != null) {
@@ -101,6 +108,7 @@ eventSource.onmessage = async (event) => {
 					leftBin: resultPosition?.leftBin,
 					rightBinId: resultPosition?.rightBinId,
 					positionAccount: resultPosition?.positionAccount,
+					openingPrice: oraclePrice,
 				};
 			}
 
@@ -127,15 +135,17 @@ async function tryRebalance(
 	price: number,
 	lastMidPrice: number,
 	bins: PositionLiquidityBins,
+	binForPrice: number,
 	activeBin: BinLiquidity,
 	lastRebalance: number,
+	currentPosition?: LbPosition,
 ) {
 	const pctDrift =
 		lastMidPrice !== 0
 			? Math.abs(price - lastMidPrice) / Math.abs(lastMidPrice)
 			: 0;
 
-	const outsideBand = shouldRebalanceBins(activeBin, bins.openBin);
+	const outsideBand = shouldRebalanceBins(binForPrice, bins.openBin);
 
 	const shouldRebalance =
 		(outsideBand || pctDrift >= 1) && Date.now() - lastRebalance > COOLDOWN_MS;
@@ -143,6 +153,13 @@ async function tryRebalance(
 	console.log("Should Rebalance? ", shouldRebalance);
 	console.log("Outside band? ", outsideBand);
 	console.log("Price drift ", pctDrift);
+	console.log(
+		"Fees ",
+		Number(currentPosition?.positionData?.feeX ?? 0),
+		Number(currentPosition?.positionData?.feeY ?? 0),
+		Number(currentPosition?.positionData?.rewardOneExcludeTransferFee ?? 0),
+		Number(currentPosition?.positionData?.rewardTwoExcludeTransferFee ?? 0),
+	);
 
 	let positionBins: PositionLiquidityBins | undefined;
 
@@ -160,6 +177,7 @@ async function tryRebalance(
 		if (positionRemoved) {
 			// Always create a new position after closing (or if no position existed)
 			positionBins = await createBalancedPositionAndAddLiquidity(
+				binForPrice,
 				activeBin,
 				dlmmPool,
 				user,
@@ -175,7 +193,7 @@ async function tryRebalance(
 	return positionBins;
 }
 
-function shouldRebalanceBins(activeBin: BinLiquidity, openingBinIndex: number) {
+function shouldRebalanceBins(binForPriceId: number, openingBinIndex: number) {
 	// Bin displacement strategy.
 	// If the bin has displaced more than +-(BIN_THRESHOLD/2), rebalance
 	// This trigger -> This keeps your liquidity centered around the market but doesn’t overreact.
@@ -184,7 +202,7 @@ function shouldRebalanceBins(activeBin: BinLiquidity, openingBinIndex: number) {
 	// Idea, also rebalance based on liquidity-weight drift? See how much quote and base inventory has deviated from target balance -> Can help correct asymetric fills and avoid one side to be drained due to trends -> Might incur impermanent loss
 	// Idea, also rebalance based on volatility to protect from short-term shocks? -> Keep track of last X prices and add a volatility index
 
-	return Math.abs(activeBin.binId - openingBinIndex) >= BINS_TO_CREATE / 2;
+	return Math.abs(binForPriceId - openingBinIndex) >= BINS_TO_CREATE / 2;
 }
 
 async function shouldRebalanceInventory(user: Keypair, connection: Connection) {

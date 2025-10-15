@@ -1,5 +1,8 @@
-import type { BinLiquidity } from "@meteora-ag/dlmm";
-import { autoFillYByStrategy, StrategyType } from "@meteora-ag/dlmm";
+import {
+	autoFillYByStrategy,
+	BinLiquidity,
+	StrategyType,
+} from "@meteora-ag/dlmm";
 import type DLMM from "@meteora-ag/dlmm";
 
 import type { PositionLiquidityBins } from "./types";
@@ -13,6 +16,7 @@ const BINS_TO_CREATE = 6;
 
 // TODO: update this to work with different strategies - This is just spot
 export async function createBalancedPositionAndAddLiquidity(
+	binForPrice: number,
 	activeBin: BinLiquidity,
 	dlmmPool: DLMM,
 	user: Keypair,
@@ -20,12 +24,12 @@ export async function createBalancedPositionAndAddLiquidity(
 ): Promise<PositionLiquidityBins | undefined> {
 	console.log("Open position");
 	const TOTAL_RANGE_INTERVAL = BINS_TO_CREATE / 2; // 3 bins on each side of the active bin
-	const minBinId = activeBin.binId - TOTAL_RANGE_INTERVAL;
-	const maxBinId = activeBin.binId + TOTAL_RANGE_INTERVAL;
+	const minBinId = binForPrice - TOTAL_RANGE_INTERVAL;
+	const maxBinId = binForPrice + TOTAL_RANGE_INTERVAL;
 
 	const totalXAmount = new BN(10 * 10 ** JUP_DECIMALS);
 	const totalYAmount = autoFillYByStrategy(
-		activeBin.binId,
+		binForPrice,
 		dlmmPool.lbPair.binStep,
 		totalXAmount,
 		activeBin.xAmount,
