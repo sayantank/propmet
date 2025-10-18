@@ -8,6 +8,8 @@ import {
 import { getTokenBalance } from "./solana";
 import { BN } from "bn.js";
 import { retry } from "./retry";
+import { SOL_MINT } from "./const";
+import { rebalanceRatio } from "./inventory";
 
 export type StrategyConfig = {
   spread: number; // in basis points
@@ -147,9 +149,12 @@ export class Strategy {
       return null;
     }
 
-    console.log("Creating position...");
-
     this.isAction = true;
+    console.log("Checking if rebalance is needed...");
+    console.log(marketPrice);
+    await this.shouldRebalance(marketPrice);
+
+    console.log("Creating position...");
 
     // Get the inventory value
     const { baseBalance, quoteBalance } = await this.getInventory(marketPrice);
@@ -268,8 +273,18 @@ export class Strategy {
       getTokenBalance(this.userKeypair.publicKey, this.quoteToken.mint, this.connection),
     ]);
 
-    const baseValue = (baseBalance / 10 ** this.baseToken.decimals) * price; // Value of base tokens in terms of quote token
-    const quoteValue = quoteBalance / 10 ** this.quoteToken.decimals;
+    console.log("Base mint", this.baseToken.mint.toBase58());
+    console.log("quote mint", this.quoteToken.mint.toBase58());
+
+    // Substract 0.05 of rent
+    const baseBalanceNoRent =
+      this.baseToken.mint === SOL_MINT ? baseBalance - 50000000 : baseBalance;
+
+    const quoteBalanceNoRent = this.quoteToken.mint.equals(SOL_MINT)
+      ? quoteBalance - 50000000
+      : quoteBalance;
+    const baseValue = (baseBalanceNoRent / 10 ** this.baseToken.decimals) * price; // Value of base tokens in terms of quote token
+    const quoteValue = quoteBalanceNoRent / 10 ** this.quoteToken.decimals;
 
     return {
       baseBalance,
@@ -277,5 +292,22 @@ export class Strategy {
       baseValue,
       quoteValue,
     };
+  }
+
+  // TokenX and tokenY base price should be expressed in USD
+  async shouldRebalance(marketPrice: number) {
+    const balances = await this.getInventory(marketPrice);
+
+    await rebalanceRatio(
+      balances.baseValue,
+      this.baseToken.mint,
+      this.baseToken.decimals,
+      balances.quoteValue,
+      this.quoteToken.mint,
+      this.quoteToken.decimals,
+      this.userKeypair,
+      0.2,
+      marketPrice,
+    );
   }
 }

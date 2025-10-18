@@ -7,8 +7,9 @@ export async function getJupUltraOrder(
   taker: PublicKey,
 ) {
   const orderResponse = await fetch(
-    `https://lite-api.jup.ag/ultra/v1/order?inputMint=${inputMint.toString()}&outputMint=${outPutMint.toString()}&amount=${inputAmount}&taker=${taker.toString()}`,
+    `https://lite-api.jup.ag/ultra/v1/order?inputMint=${inputMint.toString()}&outputMint=${outPutMint.toString()}&amount=${Math.floor(inputAmount)}&taker=${taker.toString()}`,
   );
+
   if (!orderResponse.ok) {
     throw new Error(`Error getting ultra order for of ${inputMint} of ${inputAmount} tokens`);
   }
@@ -16,7 +17,7 @@ export async function getJupUltraOrder(
     transaction: string;
     requestId: string;
   };
-
+  console.log(response);
   return response;
 }
 
@@ -25,8 +26,10 @@ export async function executeJupUltraOrder(
   orderRequesId: string,
   payer: Keypair,
 ) {
+  console.log(transactionBase64);
   // Deserialize, sign and serialize the transaction
   const transaction = VersionedTransaction.deserialize(Buffer.from(transactionBase64, "base64"));
+
   transaction.sign([payer]);
   const signedTransaction = Buffer.from(transaction.serialize()).toString("base64");
 
