@@ -2,11 +2,15 @@ import DLMM, { StrategyType } from "@meteora-ag/dlmm";
 import { HermesClient } from "@pythnetwork/hermes-client";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import { Strategy } from "./strategy";
+import "dotenv/config";
 
 const hermes = new HermesClient("https://hermes.pyth.network", {});
-const connection = new Connection(
-  "https://mainnet.helius-rpc.com/?api-key=4529a1d6-1946-4721-8962-354fd77260c8",
-);
+
+if (!process.env.RPC_URL) {
+  throw new Error("RPC_URL environment variable is not set.");
+}
+
+const connection = new Connection(process.env.RPC_URL);
 
 // Create pool instances
 
@@ -15,14 +19,20 @@ const connection = new Connection(
 const JUP_SOL_POOL_ADDRESS = new PublicKey("FpjYwNjCStVE2Rvk9yVZsV46YwgNTFjp7ktJUDcZdyyk");
 const dlmm = await DLMM.create(connection, JUP_SOL_POOL_ADDRESS);
 
-const userKeypair = Keypair.fromSecretKey(
-  Uint8Array.from([
-    86, 221, 198, 199, 169, 88, 199, 37, 56, 174, 119, 57, 126, 165, 192, 167, 146, 28, 236, 199,
-    123, 187, 237, 89, 219, 134, 42, 151, 91, 201, 186, 50, 199, 241, 163, 61, 154, 33, 118, 24, 81,
-    64, 184, 239, 83, 192, 70, 182, 215, 161, 111, 152, 68, 240, 185, 114, 153, 209, 200, 24, 138,
-    170, 212, 125,
-  ]),
-);
+import dotenv from "dotenv";
+dotenv.config();
+
+if (!process.env.SECRET_KEY) {
+  throw new Error("SECRET_KEY environment variable is not set.");
+}
+
+const secretArray = JSON.parse(process.env.SECRET_KEY);
+
+if (!Array.isArray(secretArray) || secretArray.some((v) => typeof v !== "number")) {
+  throw new Error("SECRET_KEY must be a JSON array of numbers.");
+}
+
+const userKeypair = Keypair.fromSecretKey(Uint8Array.from(secretArray));
 
 const strategy = new Strategy(connection, dlmm, userKeypair, {
   spread: 30,
@@ -44,14 +54,14 @@ const eventSource = await hermes.getPriceUpdatesStream(
   },
 );
 
-eventSource.onmessage = async (event) => {
-  const jupPrice = Number(JSON.parse(event.data).parsed[0].price.price);
-  const solPrice = Number(JSON.parse(event.data).parsed[1].price.price);
+// eventSource.onmessage = async (event) => {
+//   const jupPrice = Number(JSON.parse(event.data).parsed[0].price.price);
+//   const solPrice = Number(JSON.parse(event.data).parsed[1].price.price);
 
-  const marketPrice = jupPrice / solPrice; // Gives SOL/JUP price
+//   const marketPrice = jupPrice / solPrice; // Gives SOL/JUP price
 
-  await strategy.run(marketPrice);
-};
+//   await strategy.run(marketPrice);
+// };
 
 // eventSource.onerror = (error) => {
 // 	console.error("Error receiving updates:", error);
