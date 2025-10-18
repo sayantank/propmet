@@ -21,13 +21,20 @@ export async function createBalancedPositionAndAddLiquidity(
 	dlmmPool: DLMM,
 	user: Keypair,
 	connection: Connection,
+	strategy?: StrategyType,
+	minBin?: number,
+	maxBin?: number,
+	tokenXAmount?: number,
+	tokenXDecimals?: number,
 ): Promise<PositionLiquidityBins | undefined> {
 	console.log("Open position");
 	const TOTAL_RANGE_INTERVAL = BINS_TO_CREATE / 2; // 3 bins on each side of the active bin
-	const minBinId = binForPrice - TOTAL_RANGE_INTERVAL;
-	const maxBinId = binForPrice + TOTAL_RANGE_INTERVAL;
+	const minBinId = minBin ?? binForPrice - TOTAL_RANGE_INTERVAL;
+	const maxBinId = maxBin ?? binForPrice + TOTAL_RANGE_INTERVAL;
 
-	const totalXAmount = new BN(10 * 10 ** JUP_DECIMALS);
+	const totalXAmount = new BN(
+		(tokenXAmount ?? 10) * 10 ** (tokenXDecimals ?? JUP_DECIMALS),
+	);
 	const totalYAmount = autoFillYByStrategy(
 		binForPrice,
 		dlmmPool.lbPair.binStep,
@@ -36,7 +43,7 @@ export async function createBalancedPositionAndAddLiquidity(
 		activeBin.yAmount,
 		minBinId,
 		maxBinId,
-		StrategyType.Spot, // can be StrategyType.Spot, StrategyType.BidAsk, StrategyType.Curve
+		strategy ?? StrategyType.Spot, // can be StrategyType.Spot, StrategyType.BidAsk, StrategyType.Curve
 	);
 
 	const newBalancePosition = new Keypair();
@@ -62,9 +69,9 @@ export async function createBalancedPositionAndAddLiquidity(
 				strategy: {
 					maxBinId,
 					minBinId,
-					strategyType: StrategyType.Spot, // can be StrategyType.Spot, StrategyType.BidAsk, StrategyType.Curve
+					strategyType: strategy ?? StrategyType.Spot, // can be StrategyType.Spot, StrategyType.BidAsk, StrategyType.Curve
 				},
-				slippage: 5,
+				slippage: 1,
 			});
 
 		const createBalancePositionTxHash = await sendAndConfirmTransaction(
@@ -82,7 +89,7 @@ export async function createBalancedPositionAndAddLiquidity(
 			positionAccount: newBalancePosition.publicKey,
 		};
 	} catch (error) {
-		console.log(error);
+		console.log("error", error);
 	}
 }
 
