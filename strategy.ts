@@ -51,6 +51,7 @@ export class Strategy {
 
   async run(marketPrice: number) {
     if (this.isAction) {
+      console.log("Already in action, skipping...");
       return;
     }
 
@@ -85,6 +86,8 @@ export class Strategy {
       (marketPriceBinId < lowerThresholdBin || marketPriceBinId > upperThresholdBin) &&
       !this.isAction
     ) {
+      this.isAction = true;
+
       console.log("Market price crossed threshold, triggering rebalance");
 
       const removeLiquidityTxs = await this.dlmm.removeLiquidity({
@@ -97,7 +100,6 @@ export class Strategy {
         skipUnwrapSOL: false,
       });
 
-      this.isAction = true;
       console.log("Removing liquidity...", removeLiquidityTxs.length);
 
       for (const tx of removeLiquidityTxs) {
@@ -107,6 +109,7 @@ export class Strategy {
         });
       }
 
+      console.log("Creating rebalanced position...");
       this.position = await this.createPosition(marketPrice);
 
       this.isAction = false;

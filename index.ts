@@ -28,7 +28,7 @@ const strategy = new Strategy(connection, dlmm, userKeypair, {
   spread: 30,
   type: StrategyType.BidAsk,
   rebalanceBinThreshold: 6000,
-  maxQuoteAmount: 0.15 * 10 ** 9, // 0.15 SOL ~ 25 USD
+  maxQuoteAmount: 0.14 * 10 ** 9, // 0.15 SOL ~ 25 USD
   maxBaseAmount: Number.MAX_SAFE_INTEGER,
 });
 
