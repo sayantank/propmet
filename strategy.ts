@@ -9,7 +9,7 @@ import { getTokenBalance } from "./solana";
 import { BN } from "bn.js";
 import { retry } from "./retry";
 import { SOL_MINT } from "./const";
-import { rebalanceRatio } from "./inventory";
+import { executeJupUltraOrder, getJupUltraOrder } from "./jup-utils";
 
 export type StrategyConfig = {
   spread: number; // in basis points
@@ -150,14 +150,20 @@ export class Strategy {
     }
 
     this.isAction = true;
+    // Get the inventory value
+    const inventory = await this.getInventory(marketPrice);
+
     console.log("Checking if rebalance is needed...");
-    console.log(marketPrice);
-    await this.shouldRebalance(marketPrice);
+    await this.tryRebalanceInventory({
+      marketPrice,
+      baseValue: inventory.baseValue,
+      quoteValue: inventory.quoteValue,
+      discrepancy: 0.4,
+    });
 
     console.log("Creating position...");
 
-    // Get the inventory value
-    const { baseBalance, quoteBalance } = await this.getInventory(marketPrice);
+    const { baseBalance, quoteBalance } = inventory;
 
     const basePositionAmount = Math.min(baseBalance, this.config.maxBaseAmount);
     const quotePositionAmount = Math.min(quoteBalance, this.config.maxQuoteAmount);
@@ -273,9 +279,6 @@ export class Strategy {
       getTokenBalance(this.userKeypair.publicKey, this.quoteToken.mint, this.connection),
     ]);
 
-    console.log("Base mint", this.baseToken.mint.toBase58());
-    console.log("quote mint", this.quoteToken.mint.toBase58());
-
     // Substract 0.05 of rent
     const baseBalanceNoRent =
       this.baseToken.mint === SOL_MINT ? baseBalance - 50000000 : baseBalance;
@@ -294,20 +297,63 @@ export class Strategy {
     };
   }
 
-  // TokenX and tokenY base price should be expressed in USD
-  async shouldRebalance(marketPrice: number) {
-    const balances = await this.getInventory(marketPrice);
+  async tryRebalanceInventory(args: {
+    marketPrice: number; // in terms of quote per base (quote/base)
+    baseValue: number; // in terms of quote token
+    quoteValue: number;
+    discrepancy: number;
+  }) {
+    const { marketPrice, baseValue, quoteValue, discrepancy } = args;
 
-    await rebalanceRatio(
-      balances.baseValue,
-      this.baseToken.mint,
-      this.baseToken.decimals,
-      balances.quoteValue,
-      this.quoteToken.mint,
-      this.quoteToken.decimals,
-      this.userKeypair,
-      0.2,
-      marketPrice,
-    );
+    // Check ratio for inventory assets
+    const difference = Math.abs(1 - baseValue / quoteValue);
+
+    if (difference > discrepancy) {
+      console.log(`Discrepancy of ${difference} found`);
+      console.log(`base greater than Quote? ${baseValue > quoteValue}`);
+      console.log(`Quote greater than Base? ${quoteValue > baseValue}`);
+      console.log(`totalValueTokenQuote ${quoteValue}`);
+      console.log(`totalValueTokenBase ${baseValue}`);
+
+      const { inputMint, outputMint, inputDecimals } =
+        baseValue > quoteValue
+          ? {
+              inputMint: this.baseToken.mint,
+              inputDecimals: this.baseToken.decimals,
+              outputMint: this.quoteToken.mint,
+            }
+          : {
+              inputMint: this.quoteToken.mint,
+              inputDecimals: this.quoteToken.decimals,
+              outputMint: this.baseToken.mint,
+            };
+
+      const swapValue = Math.abs(baseValue - quoteValue) / 2; // this is in terms of quote token
+
+      /**
+       * If inputMint is base, we need to convert the swapValue to the number of inputMint tokens
+       * `swapValue` here is in terms of quote token, and marketPrice is in terms of quote/base
+       * Thus, inputAmount = swapValue(quote) / marketPrice(quote/base) = base
+       *
+       * Whereas, if inputMint is quote, inputAmount is simply swapValue as it is already in terms of quote token
+       */
+      const inputAmount = inputMint === this.baseToken.mint ? swapValue / marketPrice : swapValue; // this is in terms of inputMint token
+
+      console.log(`Swapping ${inputAmount} of token ${inputMint} for token ${outputMint}`);
+
+      const jupUltraOrder = await getJupUltraOrder(
+        inputMint,
+        outputMint,
+        inputAmount * 10 ** inputDecimals, // converting to raw token amount
+        this.userKeypair.publicKey,
+      );
+
+      await executeJupUltraOrder(
+        jupUltraOrder.transaction,
+        jupUltraOrder.requestId,
+        this.userKeypair,
+      );
+      console.log(`Successfully rebalance ${inputMint} to ${outputMint}`);
+    }
   }
 }
