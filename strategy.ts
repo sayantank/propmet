@@ -7,16 +7,15 @@ import {
 } from "@solana/web3.js";
 import { getTokenBalance } from "./solana";
 import { BN } from "bn.js";
-import { retry } from "./retry";
 import { SOL_MINT } from "./const";
 import { executeJupUltraOrder, getJupUltraOrder } from "./jup-utils";
+import { retry } from "./retry";
 
 export type StrategyConfig = {
   spread: number; // in basis points
+  acceptableDelta: number; // in basis points
   type: StrategyType;
   rebalanceBinThreshold: number; // in basis points
-  maxQuoteAmount: number;
-  maxBaseAmount: number;
 };
 
 export class Strategy {
@@ -30,8 +29,9 @@ export class Strategy {
   };
 
   private position: LbPosition | null = null;
+  private positionFetched = false;
 
-  private isAction = false;
+  private isBusy = false;
 
   private noThresholdCounter = 0;
 
@@ -52,14 +52,24 @@ export class Strategy {
   }
 
   async run(marketPrice: number) {
-    if (this.isAction) {
+    // Skip if already processing
+    if (this.isBusy) {
       return;
     }
 
-    await this.getOrCreatePosition(marketPrice);
+    // Ensure we have a position (fetch it if needed, but don't create yet)
+    if (!this.positionFetched) {
+      await this.fetchExistingPosition();
+    }
 
+    // If no position exists, create one
     if (this.position == null) {
-      console.error("Failed to get or create position");
+      await this.safeExecute(async () => {
+        this.position = await this.createPosition(marketPrice);
+        if (this.position == null) {
+          console.error("Failed to create position");
+        }
+      });
       return;
     }
 
@@ -83,35 +93,12 @@ export class Strategy {
     const lowerThresholdBin = positionMidBin - numBinsThreshold;
     const upperThresholdBin = positionMidBin + numBinsThreshold;
 
-    if (
-      (marketPriceBinId < lowerThresholdBin || marketPriceBinId > upperThresholdBin) &&
-      !this.isAction
-    ) {
+    if (marketPriceBinId < lowerThresholdBin || marketPriceBinId > upperThresholdBin) {
       console.log("Market price crossed threshold, triggering rebalance");
 
-      const removeLiquidityTxs = await this.dlmm.removeLiquidity({
-        user: this.userKeypair.publicKey,
-        position: this.position.publicKey,
-        fromBinId: this.position.positionData.lowerBinId,
-        toBinId: this.position.positionData.upperBinId,
-        bps: new BN(10000),
-        shouldClaimAndClose: true,
-        skipUnwrapSOL: false,
+      await this.safeExecute(async () => {
+        await this.rebalancePosition(marketPrice);
       });
-
-      this.isAction = true;
-      console.log("Removing liquidity...", removeLiquidityTxs.length);
-
-      for (const tx of removeLiquidityTxs) {
-        await sendAndConfirmTransaction(this.connection, tx, [this.userKeypair], {
-          skipPreflight: false,
-          commitment: "confirmed",
-        });
-      }
-
-      this.position = await this.createPosition(marketPrice);
-
-      this.isAction = false;
     } else {
       if (this.noThresholdCounter % 10 === 0) {
         console.log("Threshold not crossed, no action needed", {
@@ -126,61 +113,71 @@ export class Strategy {
     }
   }
 
-  private async getOrCreatePosition(marketPrice: number): Promise<LbPosition | null> {
-    if (this.position) {
-      return this.position;
+  private async fetchExistingPosition(): Promise<void> {
+    if (this.positionFetched) {
+      return;
     }
 
-    const existingPositions = await this.dlmm.getPositionsByUserAndLbPair(
-      this.userKeypair.publicKey,
-    );
-    if (existingPositions.userPositions.length > 0) {
-      console.warn("Found multiple positions for user, using the first one");
+    await this.safeExecute(async () => {
+      const existingPositions = await this.dlmm.getPositionsByUserAndLbPair(
+        this.userKeypair.publicKey,
+      );
 
-      this.position = existingPositions.userPositions[0]!;
-      return existingPositions.userPositions[0]!;
+      if (existingPositions.userPositions.length > 0) {
+        if (existingPositions.userPositions.length > 1) {
+          console.warn("Found multiple positions for user, using the first one");
+        }
+        this.position = existingPositions.userPositions[0]!;
+      }
+
+      this.positionFetched = true;
+    });
+  }
+
+  private async rebalancePosition(marketPrice: number): Promise<void> {
+    if (!this.position) {
+      console.error("Cannot rebalance: no position exists");
+      return;
     }
 
-    return this.createPosition(marketPrice);
+    console.log("Removing liquidity...");
+
+    const removeLiquidityTxs = await this.dlmm.removeLiquidity({
+      user: this.userKeypair.publicKey,
+      position: this.position.publicKey,
+      fromBinId: this.position.positionData.lowerBinId,
+      toBinId: this.position.positionData.upperBinId,
+      bps: new BN(10000),
+      shouldClaimAndClose: true,
+      skipUnwrapSOL: false,
+    });
+
+    console.log(`Sending ${removeLiquidityTxs.length} remove liquidity transaction(s)...`);
+
+    for (const tx of removeLiquidityTxs) {
+      await sendAndConfirmTransaction(this.connection, tx, [this.userKeypair], {
+        skipPreflight: false,
+        commitment: "confirmed",
+      });
+    }
+
+    this.position = null;
+    this.position = await this.createPosition(marketPrice);
   }
 
   private async createPosition(marketPrice: number): Promise<LbPosition | null> {
-    if (this.isAction) {
-      return null;
-    }
-
-    this.isAction = true;
-    // Get the inventory value
-    const inventory = await this.getInventory(marketPrice);
-
-    console.log("Checking if rebalance is needed...");
-    await this.tryRebalanceInventory({
-      marketPrice,
-      baseValue: inventory.baseValue,
-      quoteValue: inventory.quoteValue,
-      discrepancy: 0.4,
-    });
-
     console.log("Creating position...");
+
+    const inventory = await this.tryRebalanceInventory({
+      marketPrice,
+    });
 
     const { baseBalance, quoteBalance } = inventory;
 
-    const basePositionAmount = Math.min(baseBalance, this.config.maxBaseAmount);
-    const quotePositionAmount = Math.min(quoteBalance, this.config.maxQuoteAmount);
+    console.log({ baseBalance, quoteBalance });
 
-    const basePositionValue = (basePositionAmount / 10 ** this.baseToken.decimals) * marketPrice;
-    const quotePositionValue = quotePositionAmount / 10 ** this.quoteToken.decimals;
-
-    // Shouldn't happen but checking just in case
-    if (basePositionAmount > baseBalance || quotePositionAmount > quoteBalance) {
-      console.log({
-        basePositionAmount,
-        baseBalance,
-        quotePositionAmount,
-        quoteBalance,
-      });
-      throw new Error("Not enough balance to position");
-    }
+    const basePositionValue = (baseBalance / 10 ** this.baseToken.decimals) * marketPrice;
+    const quotePositionValue = quoteBalance / 10 ** this.quoteToken.decimals;
 
     const minBinPrice = marketPrice * (1 - this.config.spread / 10000);
     const maxBinPrice = marketPrice * (1 + this.config.spread / 10000);
@@ -222,8 +219,8 @@ export class Strategy {
         strategyType: this.config.type,
         singleSidedX: false,
       },
-      totalXAmount: basePositionAmount,
-      totalYAmount: quotePositionAmount,
+      totalBaseAmount: baseBalance,
+      totalQuoteAmount: quoteBalance,
     });
 
     const positionKeypair = Keypair.generate();
@@ -236,10 +233,11 @@ export class Strategy {
         strategyType: this.config.type,
         singleSidedX: false,
       },
-      totalXAmount: new BN(basePositionAmount),
-      totalYAmount: new BN(quotePositionAmount),
+      totalXAmount: new BN(baseBalance),
+      totalYAmount: new BN(quoteBalance),
       user: this.userKeypair.publicKey,
     });
+
     const createBalancePositionTxHash = await sendAndConfirmTransaction(
       this.connection,
       createPositionTx,
@@ -266,14 +264,11 @@ export class Strategy {
       },
     );
 
-    this.isAction = false;
-    this.position = newPosition;
-
     return newPosition;
   }
 
   // Price is in terms of quote/base
-  private async getInventory(price: number) {
+  private async getInventory(price: number, _minContextSlot?: number) {
     const [baseBalance, quoteBalance] = await Promise.all([
       getTokenBalance(this.userKeypair.publicKey, this.baseToken.mint, this.connection),
       getTokenBalance(this.userKeypair.publicKey, this.quoteToken.mint, this.connection),
@@ -284,14 +279,14 @@ export class Strategy {
       this.baseToken.mint === SOL_MINT ? baseBalance - 50000000 : baseBalance;
 
     const quoteBalanceNoRent = this.quoteToken.mint.equals(SOL_MINT)
-      ? quoteBalance - 50000000
+      ? quoteBalance - 100000000
       : quoteBalance;
     const baseValue = (baseBalanceNoRent / 10 ** this.baseToken.decimals) * price; // Value of base tokens in terms of quote token
     const quoteValue = quoteBalanceNoRent / 10 ** this.quoteToken.decimals;
 
     return {
-      baseBalance,
-      quoteBalance,
+      baseBalance: baseBalanceNoRent,
+      quoteBalance: quoteBalanceNoRent,
       baseValue,
       quoteValue,
     };
@@ -299,21 +294,17 @@ export class Strategy {
 
   async tryRebalanceInventory(args: {
     marketPrice: number; // in terms of quote per base (quote/base)
-    baseValue: number; // in terms of quote token
-    quoteValue: number;
-    discrepancy: number;
   }) {
-    const { marketPrice, baseValue, quoteValue, discrepancy } = args;
+    const inventory = await this.getInventory(args.marketPrice);
+
+    const { marketPrice } = args;
+    const { baseValue, quoteValue } = inventory;
 
     // Check ratio for inventory assets
     const difference = Math.abs(1 - baseValue / quoteValue);
 
-    if (difference > discrepancy) {
-      console.log(`Discrepancy of ${difference} found`);
-      console.log(`base greater than Quote? ${baseValue > quoteValue}`);
-      console.log(`Quote greater than Base? ${quoteValue > baseValue}`);
-      console.log(`totalValueTokenQuote ${quoteValue}`);
-      console.log(`totalValueTokenBase ${baseValue}`);
+    if (difference > this.config.acceptableDelta / 10000) {
+      console.log(`Discrepancy of ${difference} found, rebalancing...`);
 
       const { inputMint, outputMint, inputDecimals } =
         baseValue > quoteValue
@@ -348,12 +339,41 @@ export class Strategy {
         this.userKeypair.publicKey,
       );
 
-      await executeJupUltraOrder(
+      const executeResult = await executeJupUltraOrder(
         jupUltraOrder.transaction,
         jupUltraOrder.requestId,
         this.userKeypair,
       );
       console.log(`Successfully rebalance ${inputMint} to ${outputMint}`);
+
+      const updatedInventory = await this.getInventory(marketPrice, Number(executeResult.slot));
+      console.log({
+        rebalanceStats: {
+          baseChange: updatedInventory.baseBalance - inventory.baseBalance,
+          quoteChange: updatedInventory.quoteBalance - inventory.quoteBalance,
+        },
+      });
+      return updatedInventory;
+    }
+
+    return inventory;
+  }
+
+  private async safeExecute<T>(callback: () => T | Promise<T>): Promise<T | null> {
+    if (this.isBusy) {
+      return null;
+    }
+
+    this.isBusy = true;
+
+    try {
+      const result = await callback();
+      return result;
+    } catch (error) {
+      console.error("Error during strategy execution:", error);
+      throw error;
+    } finally {
+      this.isBusy = false;
     }
   }
 }

@@ -17,7 +17,6 @@ export async function getJupUltraOrder(
     transaction: string;
     requestId: string;
   };
-  console.log(response);
   return response;
 }
 
@@ -26,7 +25,6 @@ export async function executeJupUltraOrder(
   orderRequesId: string,
   payer: Keypair,
 ) {
-  console.log(transactionBase64);
   // Deserialize, sign and serialize the transaction
   const transaction = VersionedTransaction.deserialize(Buffer.from(transactionBase64, "base64"));
 
@@ -50,13 +48,11 @@ export async function executeJupUltraOrder(
   const executeResult = (await executeResponse.json()) as {
     status: string;
     signature: string;
+    slot: string;
   };
 
-  if (executeResult.status === "Success") {
-    console.log("Swap successful:", JSON.stringify(executeResult, null, 2));
-    console.log(`https://solscan.io/tx/${executeResult.signature}`);
-  } else {
-    console.error("Swap failed:", JSON.stringify(executeResult, null, 2));
-    console.log(`https://solscan.io/tx/${executeResult.signature}`);
-  }
+  console.log(`Swap ${executeResult.status === "Success" ? "successful" : "failed"}`);
+  console.log(`https://solscan.io/tx/${executeResult.signature}`);
+
+  return executeResult;
 }

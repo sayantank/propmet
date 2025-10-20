@@ -28,11 +28,10 @@ const secretKey = Uint8Array.from(process.env.SECRET_KEY.split(",").map((v) => N
 const userKeypair = Keypair.fromSecretKey(Uint8Array.from(secretKey));
 
 const strategy = new Strategy(connection, dlmm, userKeypair, {
-  spread: 30,
+  spread: 20,
+  acceptableDelta: 1000,
   type: StrategyType.BidAsk,
-  rebalanceBinThreshold: 6000,
-  maxQuoteAmount: 0.15 * 10 ** 9, // 0.15 SOL ~ 25 USD
-  maxBaseAmount: Number.MAX_SAFE_INTEGER,
+  rebalanceBinThreshold: 5000,
 });
 
 const eventSource = await hermes.getPriceUpdatesStream(
