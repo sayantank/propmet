@@ -135,8 +135,6 @@ export class Strategy {
   }
 
   private async rebalancePosition(marketPrice: number): Promise<void> {
-    console.log("position", this.position);
-    console.log("isBusy", this.isBusy);
     if (!this.position) {
       console.error("Cannot rebalance: no position exists");
       return;
