@@ -16,8 +16,9 @@ const connection = new Connection(process.env.RPC_URL);
 
 // e.g. creating a DLMM pool
 // You can get your desired pool address from the API https://dlmm-api.meteora.ag/pair/all
-const JUP_SOL_POOL_ADDRESS = new PublicKey("FpjYwNjCStVE2Rvk9yVZsV46YwgNTFjp7ktJUDcZdyyk");
-const dlmm = await DLMM.create(connection, JUP_SOL_POOL_ADDRESS);
+// const JUP_SOL_POOL_ADDRESS = new PublicKey("FpjYwNjCStVE2Rvk9yVZsV46YwgNTFjp7ktJUDcZdyyk");
+const JUP_USDC_POOL_ADDRESS = new PublicKey("BhQEFZCRnWKQ21LEt4DUby7fKynfmLVJcNjfHNqjEF61");
+const dlmm = await DLMM.create(connection, JUP_USDC_POOL_ADDRESS);
 
 if (!process.env.SECRET_KEY) {
   throw new Error("SECRET_KEY environment variable is not set.");
@@ -29,17 +30,17 @@ const userKeypair = Keypair.fromSecretKey(Uint8Array.from(secretKey));
 
 const strategy = new Strategy(connection, dlmm, userKeypair, {
   spread: 20,
-  acceptableDelta: 1000,
+  acceptableDelta: 10000,
   type: StrategyType.BidAsk,
-  rebalanceBinThreshold: 5000,
+  rebalanceBinThreshold: 6000,
 });
 
 const eventSource = await hermes.getPriceUpdatesStream(
   [
     // JUP-USD
     "0x0a0408d619e9380abad35060f9192039ed5042fa6f82301d0e48bb52be830996",
-    // SOL-USD
-    "0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
+    // // USDC
+    "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
   ],
   {
     parsed: true,
@@ -49,8 +50,8 @@ const eventSource = await hermes.getPriceUpdatesStream(
 eventSource.onmessage = async (event) => {
   const jupPrice = Number(JSON.parse(event.data).parsed[0].price.price);
   const solPrice = Number(JSON.parse(event.data).parsed[1].price.price);
-
   const marketPrice = jupPrice / solPrice; // Gives SOL/JUP price
+
   await strategy.run(marketPrice);
 };
 

@@ -135,6 +135,8 @@ export class Strategy {
   }
 
   private async rebalancePosition(marketPrice: number): Promise<void> {
+    console.log("position", this.position);
+    console.log("isBusy", this.isBusy);
     if (!this.position) {
       console.error("Cannot rebalance: no position exists");
       return;
@@ -142,6 +144,15 @@ export class Strategy {
 
     console.log("Removing liquidity...");
 
+    console.log({
+      user: this.userKeypair.publicKey.toBase58(),
+      position: this.position.publicKey.toBase58(),
+      fromBinId: this.position.positionData.lowerBinId,
+      toBinId: this.position.positionData.upperBinId,
+      bps: new BN(10000),
+      shouldClaimAndClose: true,
+      skipUnwrapSOL: false,
+    });
     const removeLiquidityTxs = await this.dlmm.removeLiquidity({
       user: this.userKeypair.publicKey,
       position: this.position.publicKey,
@@ -157,7 +168,7 @@ export class Strategy {
     for (const tx of removeLiquidityTxs) {
       await sendAndConfirmTransaction(this.connection, tx, [this.userKeypair], {
         skipPreflight: false,
-        commitment: "confirmed",
+        commitment: "finalized",
       });
     }
 
@@ -242,10 +253,14 @@ export class Strategy {
       this.connection,
       createPositionTx,
       [this.userKeypair, positionKeypair],
-      { skipPreflight: false, commitment: "confirmed" },
+      { skipPreflight: false, commitment: "finalized" },
     );
 
-    console.log("Opened position", createBalancePositionTxHash);
+    console.log(
+      "Opened position",
+      positionKeypair.publicKey.toBase58(),
+      createBalancePositionTxHash,
+    );
 
     const newPosition = await retry(
       async () => {
@@ -255,7 +270,9 @@ export class Strategy {
         if (newPositions.userPositions.length === 0) {
           throw new Error("Position not found");
         }
-        return newPositions.userPositions[0]!;
+        return newPositions.userPositions.find((position) =>
+          position.publicKey.equals(positionKeypair.publicKey),
+        )!;
       },
       {
         initialDelay: 1000,
