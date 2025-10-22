@@ -17,7 +17,14 @@ export async function getJupUltraOrder(
   const response = (await orderResponse.json()) as {
     transaction: string;
     requestId: string;
+    errorMessage?: string;
   };
+
+  if (response.errorMessage !== null) {
+    throw new Error(
+      `Error getting ultra order for of ${inputMint} of ${inputAmount} tokens. Error ${response.errorMessage}`,
+    );
+  }
   return response;
 }
 
