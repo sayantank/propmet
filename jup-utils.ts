@@ -7,29 +7,18 @@ export async function getJupUltraOrder(
   inputAmount: number,
   taker: PublicKey,
 ) {
-  const order = await retry(
-    async () => {
-      const orderResponse = await fetch(
-        `https://lite-api.jup.ag/ultra/v1/order?inputMint=${inputMint.toString()}&outputMint=${outPutMint.toString()}&amount=${Math.floor(inputAmount)}&taker=${taker.toString()}`,
-      );
-
-      if (!orderResponse.ok) {
-        throw new Error(`Error getting ultra order for of ${inputMint} of ${inputAmount} tokens`);
-      }
-      const response = (await orderResponse.json()) as {
-        transaction: string;
-        requestId: string;
-      };
-      return response;
-    },
-    {
-      initialDelay: 200,
-      maxRetries: 3,
-      maxDelay: 5000,
-    },
+  const orderResponse = await fetch(
+    `https://lite-api.jup.ag/ultra/v1/order?inputMint=${inputMint.toString()}&outputMint=${outPutMint.toString()}&amount=${Math.floor(inputAmount)}&taker=${taker.toString()}`,
   );
 
-  return order;
+  if (!orderResponse.ok) {
+    throw new Error(`Error getting ultra order for of ${inputMint} of ${inputAmount} tokens`);
+  }
+  const response = (await orderResponse.json()) as {
+    transaction: string;
+    requestId: string;
+  };
+  return response;
 }
 
 export async function executeJupUltraOrder(
