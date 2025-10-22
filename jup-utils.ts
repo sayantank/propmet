@@ -22,7 +22,7 @@ export async function getJupUltraOrder(
 
   if (response.errorMessage !== null) {
     throw new Error(
-      `Error getting ultra order for of ${inputMint} of ${inputAmount} tokens. Error ${response.errorMessage}`,
+      `Error getting ultra order for ${inputMint} of ${inputAmount} tokens. Error ${response.errorMessage}`,
     );
   }
   return response;
