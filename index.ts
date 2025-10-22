@@ -14,6 +14,10 @@ if (!process.env.SECRET_KEY) {
   throw new Error("SECRET_KEY environment variable is not set.");
 }
 
+if (!process.env.POOL) {
+  throw new Error("POOL environment variable is not set.");
+}
+
 const secretKey = Uint8Array.from(process.env.SECRET_KEY.split(",").map((v) => Number(v.trim())));
 
 const userKeypair = Keypair.fromSecretKey(Uint8Array.from(secretKey));
@@ -37,7 +41,7 @@ const JUP_USDC_PRICE_FEEDS = [
   "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
 ];
 
-const POOL_CONFIGS = {
+const POOL_CONFIGS: Record<string, { priceFeeds: string[]; poolAddress: PublicKey }> = {
   "jup/sol": {
     priceFeeds: JUP_SOL_PRICE_FEEDS,
     poolAddress: JUP_SOL_POOL_ADDRESS,
@@ -48,7 +52,12 @@ const POOL_CONFIGS = {
   },
 };
 
-const selectedPool = POOL_CONFIGS["jup/sol"];
+const selectedPool = POOL_CONFIGS[process.env.POOL!];
+if (!selectedPool) {
+  throw new Error(
+    `Pool ${process.env.POOL} not found. Available pools are: ${Object.keys(POOL_CONFIGS).join(", ")}`,
+  );
+}
 
 const dlmm = await DLMM.create(connection, selectedPool.poolAddress);
 
