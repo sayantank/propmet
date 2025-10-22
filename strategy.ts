@@ -233,7 +233,7 @@ export class Strategy {
       totalXAmount: new BN(baseBalance),
       totalYAmount: new BN(quoteBalance),
       user: this.userKeypair.publicKey,
-      slippage: 500, // Liquiditidy slippage when adding liquidity to
+      slippage: 0.5, // Liquiditidy slippage when adding liquidity to
     });
 
     const createBalancePositionTxHash = await sendAndConfirmTransaction(
