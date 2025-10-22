@@ -1,4 +1,4 @@
-import DLMM, { StrategyType, type LbPosition } from "@meteora-ag/dlmm";
+import DLMM, { type StrategyType, type LbPosition } from "@meteora-ag/dlmm";
 import {
   Keypair,
   sendAndConfirmTransaction,
@@ -142,16 +142,6 @@ export class Strategy {
 
     console.log("Removing liquidity...");
 
-    console.log({
-      user: this.userKeypair.publicKey.toBase58(),
-      position: this.position.publicKey.toBase58(),
-      fromBinId: this.position.positionData.lowerBinId,
-      toBinId: this.position.positionData.upperBinId,
-      bps: new BN(10000),
-      shouldClaimAndClose: true,
-      skipUnwrapSOL: false,
-    });
-
     const removeLiquidityTxs = await this.dlmm.removeLiquidity({
       user: this.userKeypair.publicKey,
       position: this.position.publicKey,
@@ -162,12 +152,10 @@ export class Strategy {
       skipUnwrapSOL: false,
     });
 
-    console.log(`Sending ${removeLiquidityTxs.length} remove liquidity transaction(s)...`);
-
     for (const tx of removeLiquidityTxs) {
       await sendAndConfirmTransaction(this.connection, tx, [this.userKeypair], {
         skipPreflight: false,
-        commitment: "finalized",
+        commitment: "confirmed",
       });
     }
 
@@ -183,8 +171,6 @@ export class Strategy {
     });
 
     const { baseBalance, quoteBalance } = inventory;
-
-    console.log({ baseBalance, quoteBalance });
 
     const basePositionValue = (baseBalance / 10 ** this.baseToken.decimals) * marketPrice;
     const quotePositionValue = quoteBalance / 10 ** this.quoteToken.decimals;
@@ -235,7 +221,6 @@ export class Strategy {
 
     const positionKeypair = Keypair.generate();
 
-    console.log("Market price", marketPrice);
     //For the record, if >26 bins are created for the bin spread we would have multiple txs
     const createPositionTx = await this.dlmm.initializePositionAndAddLiquidityByStrategy({
       positionPubKey: positionKeypair.publicKey,
@@ -255,7 +240,7 @@ export class Strategy {
       this.connection,
       createPositionTx,
       [this.userKeypair, positionKeypair],
-      { skipPreflight: true, commitment: "finalized" },
+      { skipPreflight: false, commitment: "confirmed" },
     );
 
     console.log(
@@ -321,7 +306,7 @@ export class Strategy {
 
     // Check ratio for inventory assets
     const difference = Math.abs(1 - baseValue / quoteValue);
-    console.log("Inventory price difference ", difference);
+
     if (difference > this.config.acceptableDelta / 10000) {
       console.log(`Discrepancy of ${difference} found, rebalancing...`);
 
@@ -363,10 +348,9 @@ export class Strategy {
         jupUltraOrder.requestId,
         this.userKeypair,
       );
-      console.log(`Successfully rebalance ${inputMint} to ${outputMint}`);
 
       const updatedInventory = await this.getInventory(marketPrice, Number(executeResult.slot));
-      console.log({
+      console.log("Successfully rebalanced inventory...", {
         rebalanceStats: {
           baseChange: updatedInventory.baseBalance - inventory.baseBalance,
           quoteChange: updatedInventory.quoteBalance - inventory.quoteBalance,

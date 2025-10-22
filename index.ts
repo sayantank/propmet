@@ -35,24 +35,43 @@ const strategy = new Strategy(connection, dlmm, userKeypair, {
   rebalanceBinThreshold: 3000,
 });
 
-const eventSource = await hermes.getPriceUpdatesStream(
-  [
-    // JUP-USD
-    "0x0a0408d619e9380abad35060f9192039ed5042fa6f82301d0e48bb52be830996",
-    // // USDC
-    "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
-  ],
-  {
-    parsed: true,
-  },
-);
+const JUP_SOL_PRICE_FEEDS = [
+  // JUP-USD
+  "0x0a0408d619e9380abad35060f9192039ed5042fa6f82301d0e48bb52be830996",
+  // SOL-USD
+  "0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
+];
+const JUP_USDC_PRICE_FEEDS = [
+  // JUP-USD
+  "0x0a0408d619e9380abad35060f9192039ed5042fa6f82301d0e48bb52be830996",
+  // USDC-USD
+  "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+];
+
+const PRICE_FEEDS = {
+  "jup/sol": JUP_SOL_PRICE_FEEDS,
+  "jup/usdc": JUP_USDC_PRICE_FEEDS,
+};
+
+const eventSource = await hermes.getPriceUpdatesStream(PRICE_FEEDS["jup/sol"], {
+  parsed: true,
+});
 
 eventSource.onmessage = async (event) => {
-  const jupPrice = Number(JSON.parse(event.data).parsed[0].price.price);
-  const usdcPrice = Number(JSON.parse(event.data).parsed[1].price.price);
-  const marketPrice = jupPrice / usdcPrice; // Gives SOL/JUP price
+  try {
+    const eventData = JSON.parse(event.data).parsed;
 
-  await strategy.run(marketPrice);
+    // NOTE: We have to make sure the `[0]` is the base token and `[1]` is the quote token
+    const marketPrice =
+      eventData.length > 1
+        ? eventData[0].price.price / eventData[1].price.price
+        : eventData[0].price.price;
+
+    await strategy.run(marketPrice);
+  } catch (error) {
+    console.error("Error parsing event data:", error);
+    return;
+  }
 };
 
 eventSource.onerror = (error) => {
