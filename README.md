@@ -1,15 +1,30 @@
 # propmet
 
-To install dependencies:
+## Getting Started
 
-```bash
-bun install
-```
+1. **Install dependencies:**
+   ```bash
+   bun install
+   ```
 
-To run:
+2. **Configure environment variables:**
 
-```bash
-bun run index.ts
-```
+   Copy `.env.example` to `.env` and fill in the following variables:
+   ```
+   RPC_URL=YOUR_SOLANA_RPC_URL
+   SECRET_KEY=YOUR_PRIVATE_KEY_COMMA_SEPARATED
+   POOL=jup/sol   # or jup/usdc
+   ```
 
-This project was created using `bun init` in bun v1.3.0. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+   - `RPC_URL`: Solana RPC endpoint (e.g., https://mainnet.helius-rpc.com/...)
+   - `SECRET_KEY`: Your keypair (e.g., exported from Sollet, as a comma-separated array: 1,2,3,...)
+   - `POOL`: One of the supported DLMM pool names (currently `jup/sol` or `jup/usdc`)
+
+3. **Run the project:**
+   ```bash
+   bun run index.ts
+   ```
+   The bot will start, listen to live Pyth price feeds for the chosen pool, and manage positions automatically according to your config.
+
+---
+ 
