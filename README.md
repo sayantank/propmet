@@ -16,8 +16,8 @@
    POOL=jup/sol   # or jup/usdc
    ```
 
-   - `RPC_URL`: Solana RPC endpoint (e.g., https://mainnet.helius-rpc.com/...)
-   - `SECRET_KEY`: Your keypair (e.g., exported from Sollet, as a comma-separated array: 1,2,3,...)
+   - `RPC_URL`: Solana RPC endpoint  
+   - `SECRET_KEY`: Your keypair  
    - `POOL`: One of the supported DLMM pool names (currently `jup/sol` or `jup/usdc`)
 
 3. **Run the project:**
