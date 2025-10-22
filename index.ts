@@ -31,7 +31,7 @@ const userKeypair = Keypair.fromSecretKey(Uint8Array.from(secretKey));
 const strategy = new Strategy(connection, dlmm, userKeypair, {
   spread: 20, // determines how many bins around active_bin to put liquidity in
   acceptableDelta: 2000, // Discrepancy between inventory tokens
-  type: StrategyType.Curve, //Concentrate liquidity around oracle price
+  type: StrategyType.BidAsk, //Concentrate liquidity around oracle price
   rebalanceBinThreshold: 3000,
 });
 

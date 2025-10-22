@@ -1,4 +1,5 @@
 import { VersionedTransaction, type Keypair, type PublicKey } from "@solana/web3.js";
+import { retry } from "./retry";
 
 export async function getJupUltraOrder(
   inputMint: PublicKey,
@@ -31,28 +32,39 @@ export async function executeJupUltraOrder(
   transaction.sign([payer]);
   const signedTransaction = Buffer.from(transaction.serialize()).toString("base64");
 
-  const executeResponse = await fetch("https://lite-api.jup.ag/ultra/v1/execute", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
+  const result = await retry(
+    async () => {
+      const executeResponse = await fetch("https://lite-api.jup.ag/ultra/v1/execute", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          signedTransaction: signedTransaction,
+          requestId: orderRequesId,
+        }),
+      });
+
+      if (!executeResponse.ok) {
+        throw new Error(`Error executing order ${orderRequesId}`);
+      }
+      const executeResult = (await executeResponse.json()) as {
+        status: string;
+        signature: string;
+        slot: string;
+      };
+
+      console.log(`Swap ${executeResult.status === "Success" ? "successful" : "failed"}`);
+      console.log(`https://solscan.io/tx/${executeResult.signature}`);
+
+      return executeResult;
     },
-    body: JSON.stringify({
-      signedTransaction: signedTransaction,
-      requestId: orderRequesId,
-    }),
-  });
+    {
+      initialDelay: 200,
+      maxRetries: 3,
+      maxDelay: 5000,
+    },
+  );
 
-  if (!executeResponse.ok) {
-    throw new Error(`Error executing order ${orderRequesId}`);
-  }
-  const executeResult = (await executeResponse.json()) as {
-    status: string;
-    signature: string;
-    slot: string;
-  };
-
-  console.log(`Swap ${executeResult.status === "Success" ? "successful" : "failed"}`);
-  console.log(`https://solscan.io/tx/${executeResult.signature}`);
-
-  return executeResult;
+  return result;
 }
