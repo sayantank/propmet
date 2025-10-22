@@ -4,7 +4,8 @@
   "type": "module",
   "private": true,
   "devDependencies": {
-    "@biomejs/biome": "^2.2.6",
+    "@biomejs/biome": "2.2.6",
+    "@types/bn.js": "^5.2.0",
     "@types/bun": "latest"
   },
   "peerDependencies": {
@@ -13,6 +14,8 @@
   "dependencies": {
     "@meteora-ag/dlmm": "^1.7.5",
     "@pythnetwork/hermes-client": "^2.0.0",
-    "@solana/web3.js": "^1.98.4"
+    "@solana/web3.js": "^1.98.4",
+    "bn.js": "^5.2.2",
+    "dotenv": "^17.2.3"
   }
 }
