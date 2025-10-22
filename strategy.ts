@@ -94,7 +94,15 @@ export class Strategy {
     const upperThresholdBin = positionMidBin + numBinsThreshold;
 
     if (marketPriceBinId < lowerThresholdBin || marketPriceBinId > upperThresholdBin) {
-      console.log("Market price crossed threshold, triggering rebalance");
+      console.log("Market price crossed threshold, triggering rebalance", {
+        position: this.position.publicKey.toString(),
+        marketPrice,
+        lowerThresholdBin,
+        upperThresholdBin,
+        marketPriceBinId,
+        halfRange,
+        numBinsThreshold,
+      });
 
       await this.safeExecute(async () => {
         await this.rebalancePosition(marketPrice);
@@ -152,22 +160,45 @@ export class Strategy {
       skipUnwrapSOL: false,
     });
 
+    const txs: string[] = [];
     for (const tx of removeLiquidityTxs) {
-      await sendAndConfirmTransaction(this.connection, tx, [this.userKeypair], {
+      const sig = await sendAndConfirmTransaction(this.connection, tx, [this.userKeypair], {
         skipPreflight: false,
         commitment: "confirmed",
       });
+      txs.push(sig);
     }
 
-    this.position = null;
-    this.position = await this.createPosition(marketPrice);
+    const maxLandedSlot = await retry(
+      async () => {
+        const txObjects = await this.connection.getTransactions(txs, {
+          commitment: "confirmed",
+        });
+
+        const maxSlot = Math.max(...txObjects.map((t) => t?.slot!));
+        return maxSlot;
+      },
+      {
+        maxRetries: 5,
+        initialDelay: 500,
+        maxDelay: 5000,
+      },
+    );
+
+    console.log("maxLandedSlot: ", maxLandedSlot);
+
+    this.position = await this.createPosition(marketPrice, maxLandedSlot);
   }
 
-  private async createPosition(marketPrice: number): Promise<LbPosition | null> {
+  private async createPosition(
+    marketPrice: number,
+    minContextSlot?: number,
+  ): Promise<LbPosition | null> {
     console.log("Creating position...");
 
     const inventory = await this.tryRebalanceInventory({
       marketPrice,
+      minContextSlot,
     });
 
     const { baseBalance, quoteBalance } = inventory;
@@ -262,20 +293,32 @@ export class Strategy {
         )!;
       },
       {
-        initialDelay: 1000,
-        maxRetries: 5,
+        initialDelay: 500,
+        maxRetries: 10,
         maxDelay: 5000,
       },
     );
+
+    console.log("found new position: ", newPosition.publicKey.toString());
 
     return newPosition;
   }
 
   // Price is in terms of quote/base
-  private async getInventory(price: number, _minContextSlot?: number) {
+  private async getInventory(price: number, minContextSlot?: number) {
     const [baseBalance, quoteBalance] = await Promise.all([
-      getTokenBalance(this.userKeypair.publicKey, this.baseToken.mint, this.connection),
-      getTokenBalance(this.userKeypair.publicKey, this.quoteToken.mint, this.connection),
+      getTokenBalance(
+        this.userKeypair.publicKey,
+        this.baseToken.mint,
+        this.connection,
+        minContextSlot,
+      ),
+      getTokenBalance(
+        this.userKeypair.publicKey,
+        this.quoteToken.mint,
+        this.connection,
+        minContextSlot,
+      ),
     ]);
 
     // Substract 0.05 of rent
@@ -298,8 +341,9 @@ export class Strategy {
 
   async tryRebalanceInventory(args: {
     marketPrice: number; // in terms of quote per base (quote/base)
+    minContextSlot?: number;
   }) {
-    const inventory = await this.getInventory(args.marketPrice);
+    const inventory = await this.getInventory(args.marketPrice, args.minContextSlot);
 
     const { marketPrice } = args;
     const { baseValue, quoteValue } = inventory;

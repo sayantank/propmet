@@ -3,6 +3,7 @@ export interface RetryOptions {
   initialDelay?: number; // in milliseconds
   maxDelay?: number; // in milliseconds
   backoffMultiplier?: number; // default is 2 for exponential backoff
+  debug?: boolean;
 }
 
 /**
@@ -13,14 +14,29 @@ export interface RetryOptions {
  * @throws The last error if all retries fail
  */
 export async function retry<T>(callback: () => T | Promise<T>, options: RetryOptions): Promise<T> {
-  const { maxRetries, initialDelay = 100, maxDelay = 30000, backoffMultiplier = 2 } = options;
+  const {
+    maxRetries,
+    initialDelay = 100,
+    maxDelay = 30000,
+    backoffMultiplier = 2,
+    debug = false,
+  } = options;
 
   let lastError: unknown;
   let delay = initialDelay;
 
+  if (debug) {
+    console.log({
+      maxRetries,
+    });
+  }
+
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const result = await callback();
+      if (debug) {
+        console.log("result...", result);
+      }
       return result;
     } catch (error) {
       console.log("Retry failed...");

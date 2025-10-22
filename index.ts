@@ -22,7 +22,7 @@ const secretKey = Uint8Array.from(process.env.SECRET_KEY.split(",").map((v) => N
 
 const userKeypair = Keypair.fromSecretKey(Uint8Array.from(secretKey));
 
-const connection = new Connection(process.env.RPC_URL);
+const connection = new Connection(process.env.RPC_URL, "confirmed");
 
 // You can get your desired pool address from the API https://dlmm-api.meteora.ag/pair/all
 const JUP_SOL_POOL_ADDRESS = new PublicKey("FpjYwNjCStVE2Rvk9yVZsV46YwgNTFjp7ktJUDcZdyyk");
@@ -63,9 +63,9 @@ const dlmm = await DLMM.create(connection, selectedPool.poolAddress);
 
 const strategy = new Strategy(connection, dlmm, userKeypair, {
   spread: 20, // determines how many bins around active_bin to put liquidity in
-  acceptableDelta: 1000, // Discrepancy between inventory tokens
+  acceptableDelta: 2000, // Discrepancy between inventory tokens
   type: StrategyType.BidAsk, //Concentrate liquidity around oracle price
-  rebalanceBinThreshold: 1000,
+  rebalanceBinThreshold: 2000,
 });
 
 const eventSource = await hermes.getPriceUpdatesStream(selectedPool.priceFeeds, {
@@ -85,7 +85,7 @@ eventSource.onmessage = async (event) => {
     await strategy.run(marketPrice);
   } catch (error) {
     console.error("Error parsing event data:", error);
-    return;
+    throw error;
   }
 };
 
