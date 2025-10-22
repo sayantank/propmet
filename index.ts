@@ -29,10 +29,10 @@ const secretKey = Uint8Array.from(process.env.SECRET_KEY.split(",").map((v) => N
 const userKeypair = Keypair.fromSecretKey(Uint8Array.from(secretKey));
 
 const strategy = new Strategy(connection, dlmm, userKeypair, {
-  spread: 20,
-  acceptableDelta: 10000,
-  type: StrategyType.BidAsk,
-  rebalanceBinThreshold: 6000,
+  spread: 20, // determines how many bins around active_bin to put liquidity in
+  acceptableDelta: 2000, // Discrepancy between inventory tokens
+  type: StrategyType.Curve, //Concentrate liquidity around oracle price
+  rebalanceBinThreshold: 3000,
 });
 
 const eventSource = await hermes.getPriceUpdatesStream(
@@ -49,8 +49,8 @@ const eventSource = await hermes.getPriceUpdatesStream(
 
 eventSource.onmessage = async (event) => {
   const jupPrice = Number(JSON.parse(event.data).parsed[0].price.price);
-  const solPrice = Number(JSON.parse(event.data).parsed[1].price.price);
-  const marketPrice = jupPrice / solPrice; // Gives SOL/JUP price
+  const usdcPrice = Number(JSON.parse(event.data).parsed[1].price.price);
+  const marketPrice = jupPrice / usdcPrice; // Gives SOL/JUP price
 
   await strategy.run(marketPrice);
 };

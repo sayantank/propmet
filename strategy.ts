@@ -1,4 +1,4 @@
-import DLMM, { type LbPosition, type StrategyType } from "@meteora-ag/dlmm";
+import DLMM, { StrategyType, type LbPosition } from "@meteora-ag/dlmm";
 import {
   Keypair,
   sendAndConfirmTransaction,
@@ -151,6 +151,7 @@ export class Strategy {
       shouldClaimAndClose: true,
       skipUnwrapSOL: false,
     });
+
     const removeLiquidityTxs = await this.dlmm.removeLiquidity({
       user: this.userKeypair.publicKey,
       position: this.position.publicKey,
@@ -234,6 +235,8 @@ export class Strategy {
 
     const positionKeypair = Keypair.generate();
 
+    console.log("Market price", marketPrice);
+    //For the record, if >26 bins are created for the bin spread we would have multiple txs
     const createPositionTx = await this.dlmm.initializePositionAndAddLiquidityByStrategy({
       positionPubKey: positionKeypair.publicKey,
       strategy: {
@@ -245,13 +248,14 @@ export class Strategy {
       totalXAmount: new BN(baseBalance),
       totalYAmount: new BN(quoteBalance),
       user: this.userKeypair.publicKey,
+      slippage: 500, // Liquiditidy slippage when adding liquidity to
     });
 
     const createBalancePositionTxHash = await sendAndConfirmTransaction(
       this.connection,
       createPositionTx,
       [this.userKeypair, positionKeypair],
-      { skipPreflight: false, commitment: "finalized" },
+      { skipPreflight: true, commitment: "finalized" },
     );
 
     console.log(
@@ -317,7 +321,7 @@ export class Strategy {
 
     // Check ratio for inventory assets
     const difference = Math.abs(1 - baseValue / quoteValue);
-
+    console.log("Inventory price difference ", difference);
     if (difference > this.config.acceptableDelta / 10000) {
       console.log(`Discrepancy of ${difference} found, rebalancing...`);
 
