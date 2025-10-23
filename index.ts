@@ -80,10 +80,10 @@ if (!selectedPool) {
 const dlmm = await DLMM.create(solana.connection, selectedPool.poolAddress);
 
 const strategy = new Strategy(solana, dlmm, userKeypair, {
-  spread: 500, // determines how many bins around active_bin to put liquidity in
+  spread: 300, // determines how many bins around active_bin to put liquidity in
   acceptableDelta: 2000, // Determines when to rebalance the inventory. If the difference between the base and quote tokens is greater than this threshold, the inventory will be rebalanced.
   type: StrategyType.BidAsk, //Concentrate liquidity around oracle price
-  rebalanceBinThreshold: 2000, // Determines when to rebalance the position. If the market price is more than this threshold away from the center of our position, the position will be rebalanced.
+  rebalanceBinThreshold: 1000, // Determines when to rebalance the position. If the market price is more than this threshold away from the center of our position, the position will be rebalanced.
 });
 
 const eventSource = await hermes.getPriceUpdatesStream(selectedPool.priceFeeds, {
