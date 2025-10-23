@@ -11,12 +11,14 @@
 
    Copy `.env.example` to `.env` and fill in the following variables:
    ```
-   RPC_URL=YOUR_SOLANA_RPC_URL
+   READ_RPC_URL=YOUR_SOLANA_RPC_URL
+   WRITE_RPC_URL=YOUR_SOLANA_RPC_URL
    SECRET_KEY=YOUR_PRIVATE_KEY_COMMA_SEPARATED
    POOL=jup/sol   # or jup/usdc
    ```
 
-   - `RPC_URL`: Solana RPC endpoint  
+   - `READ_RPC_URL`: Solana RPC endpoint
+   - `WRITE_RPC_URL`: Solana RPC endpoint
    - `SECRET_KEY`: Your keypair  
    - `POOL`: One of the supported DLMM pool names (currently `jup/sol` or `jup/usdc`)
 
