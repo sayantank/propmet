@@ -1,10 +1,4 @@
-import {
-  Connection,
-  PublicKey,
-  type Commitment,
-  type Finality,
-  type TransactionResponse,
-} from "@solana/web3.js";
+import { Connection, PublicKey, type Commitment, type Finality } from "@solana/web3.js";
 
 const WSOL_MINT = new PublicKey("So11111111111111111111111111111111111111112");
 
@@ -62,51 +56,57 @@ export class Solana {
   async confirmTransactions(signatures: string[], _commitment?: Finality): Promise<void> {
     // Confirm transactions using websocket subscription to onSignature
     try {
-      const waitForConfirmation = (
-        signature: string,
-        commitment: Commitment = "confirmed",
-      ): Promise<TransactionResponse | null> => {
-        return new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            reject(new Error(`Timeout waiting for confirmation for signature: ${signature}`));
-          }, 60_000); // 1 min timeout per tx, adjust as desired
-
-          const subId = this.connection.onSignature(
-            signature,
-            async (result) => {
-              clearTimeout(timeout);
-              // remove listener after response
-              try {
-                await this.connection.removeSignatureListener(subId);
-              } catch (e) {
-                // ignore
-                console.log(e);
-              }
-              if (result.err) {
-                reject(new Error("Transaction failed: " + JSON.stringify(result.err)));
-              } else {
-                // Fetch and return the full tx info if possible, otherwise just return success
-                try {
-                  const tx = await this.connection.getTransaction(signature, {
-                    commitment: "confirmed",
-                  });
-                  resolve(null);
-                } catch (e) {
-                  // Transaction could already be dropped from RPC node, return null as ok
-                  reject(e);
-                }
-              }
-            },
-            commitment,
-          );
-        });
-      };
-
-      await Promise.all(signatures.map((signature) => waitForConfirmation(signature, "confirmed")));
+      await Promise.all(
+        signatures.map((signature) => this.waitForConfirmation(signature, "confirmed")),
+      );
     } catch (error) {
       console.error(`Error confirming transaction: ${error}`);
-      return null;
+      // Type should be void, not return a value
     }
+  }
+
+  private waitForConfirmation(
+    signature: string,
+    commitment: Commitment = "confirmed",
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error(`Timeout waiting for confirmation for signature: ${signature}`));
+      }, 60_000); // 1 min timeout per tx, adjust as desired
+
+      const subId = this.connection.onSignature(
+        signature,
+        async (result: any) => {
+          clearTimeout(timeout);
+          // remove listener after response
+          try {
+            await this.connection.removeSignatureListener(subId);
+          } catch (e) {
+            // ignore
+            console.log(e);
+          }
+          if (result.err) {
+            reject(new Error(`Transaction failed: ${JSON.stringify(result.err)}`));
+            // Fetch and return the full tx info if possible, otherwise just return success
+            try {
+              const tx = await this.connection.getTransaction(signature, {
+                commitment: "confirmed",
+              });
+              if (tx == null) {
+                reject(new Error("Transaction not found"));
+              }
+              resolve();
+            } catch (e2) {
+              // Transaction could already be dropped from RPC node, return null as ok
+              reject(e2);
+            }
+          } else {
+            resolve();
+          }
+        },
+        commitment,
+      );
+    });
   }
 }
 
@@ -143,7 +143,7 @@ export async function getTokenBalance(
 
   const data: any = await response.json();
   if (data.result == null) {
-    throw new Error(`Failed to get token balance: ${data.error.message}`);
+    throw new Error(`Failed to get token balance: ${data.error?.message ?? "Unknown error"}`);
   }
 
   const tokenAccountBalance =
@@ -152,7 +152,7 @@ export async function getTokenBalance(
       : 0;
 
   if (mint.equals(WSOL_MINT)) {
-    const response = await fetch(connection.rpcEndpoint, {
+    const solResponse = await fetch(connection.rpcEndpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -164,19 +164,19 @@ export async function getTokenBalance(
         params: [user.toString(), { commitment: "confirmed", minContextSlot: minContextSlot }],
       }),
     });
-    if (!response.ok) {
-      throw new Error(`Failed to get sol balance: ${response.statusText}`);
+    if (!solResponse.ok) {
+      throw new Error(`Failed to get sol balance: ${solResponse.statusText}`);
     }
 
-    const data: any = await response.json();
+    const solData: any = await solResponse.json();
 
-    if (data.result == null) {
-      throw new Error(`Failed to get sol balance: ${data.error.message}`);
+    if (solData.result == null) {
+      throw new Error(`Failed to get sol balance: ${solData.error?.message ?? "Unknown error"}`);
     }
 
-    const solBalance = Number(data.result.value);
+    const solBalance = Number(solData.result.value);
 
-    return Number(solBalance) + tokenAccountBalance;
+    return solBalance + tokenAccountBalance;
   }
 
   return tokenAccountBalance;
