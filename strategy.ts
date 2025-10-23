@@ -366,11 +366,20 @@ export class Strategy {
 
       console.log(`Swapping ${inputAmount} of token ${inputMint} for token ${outputMint}`);
 
-      const jupUltraOrder = await getJupUltraOrder(
-        inputMint,
-        outputMint,
-        inputAmount * 10 ** inputDecimals, // converting to raw token amount
-        this.userKeypair.publicKey,
+      const jupUltraOrder = await retry(
+        async () => {
+          return await getJupUltraOrder(
+            inputMint,
+            outputMint,
+            inputAmount * 10 ** inputDecimals, // converting to raw token amount
+            this.userKeypair.publicKey,
+          );
+        },
+        {
+          maxRetries: 3,
+          initialDelay: 1000,
+          maxDelay: 5000,
+        },
       );
 
       const executeResult = await executeJupUltraOrder(
