@@ -155,7 +155,7 @@ export async function getTokenBalance(
       : 0;
 
   if (mint.equals(WSOL_MINT)) {
-    const solResponse = await fetch(connection.rpcEndpoint, {
+    const response = await fetch(connection.rpcEndpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -167,17 +167,17 @@ export async function getTokenBalance(
         params: [user.toString(), { commitment: "confirmed", minContextSlot: minContextSlot }],
       }),
     });
-    if (!solResponse.ok) {
-      throw new Error(`Failed to get sol balance: ${solResponse.statusText}`);
+    if (!response.ok) {
+      throw new Error(`Failed to get sol balance: ${response.statusText}`);
     }
 
-    const solData: any = await solResponse.json();
+    const data: any = await response.json();
 
-    if (solData.result == null) {
-      throw new Error(`Failed to get sol balance: ${solData.error?.message ?? "Unknown error"}`);
+    if (data.result == null) {
+      throw new Error(`Failed to get sol balance: ${data.error?.message ?? "Unknown error"}`);
     }
 
-    const solBalance = Number(solData.result.value);
+    const solBalance = Number(data.result.value);
 
     return solBalance + tokenAccountBalance;
   }
