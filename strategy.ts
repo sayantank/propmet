@@ -166,7 +166,7 @@ export class Strategy {
 
     const confirmedTxs = await this.solana.confirmTransactions(txs);
 
-    const maxLandedSlot = confirmedTxs ? Math.max(...confirmedTxs.map((tx) => tx.slot!)) : null;
+    const maxLandedSlot = confirmedTxs ? Math.max(...confirmedTxs.map((tx) => tx)) : null;
     if (maxLandedSlot == null) {
       throw new Error("Failed to confirm transactions");
     }

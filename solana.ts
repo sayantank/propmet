@@ -53,14 +53,15 @@ export class Solana {
   }
 
   // Either confirm or throw exception on confirmation
-  async confirmTransactions(signatures: string[]): Promise<void> {
+  async confirmTransactions(signatures: string[]): Promise<number[]> {
     // Confirm transactions using websocket subscription to onSignature
     try {
-      await Promise.all(
+      const slotResults = await Promise.all(
         signatures.map((signature) => this.waitForConfirmation(signature, "confirmed")),
       );
+      return slotResults.filter((e) => e != null);
     } catch (error) {
-      console.error(`Error confirming transaction: ${error}`);
+      throw new Error(`Error confirming transaction: ${error}`);
       // Type should be void, not return a value
     }
   }
@@ -68,7 +69,7 @@ export class Solana {
   private waitForConfirmation(
     signature: string,
     commitment: Commitment = "confirmed",
-  ): Promise<void> {
+  ): Promise<number | null> {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error(`Timeout waiting for confirmation for signature: ${signature}`));
@@ -76,35 +77,18 @@ export class Solana {
 
       const subId = this.connection.onSignature(
         signature,
-        async (result: any) => {
+        async (result: any, slot: any) => {
           clearTimeout(timeout);
           // remove listener after response
           try {
             await this.connection.removeSignatureListener(subId);
-          } catch (e) {
-            // ignore
-            console.log(e);
-          }
-          if (result.err) {
-            console.log(
-              `Transaction failed on websocket subscription: ${JSON.stringify(result.err)}`,
-            );
-            console.log("Fallback to RPC read");
-            // Fetch the transaction on RPC, if found, resolve, else throw error
-            try {
-              const tx = await this.connection.getTransaction(signature, {
-                commitment: "confirmed",
-              });
-              if (tx == null) {
-                reject(new Error("Transaction not found"));
-              }
-              resolve();
-            } catch (e) {
-              // Transaction could already be dropped from RPC node, return null as ok
-              reject(e);
+            if (result.error != null) {
+              throw new Error(`Error checking signature ${signature} - ${result.error}`);
             }
-          } else {
-            resolve();
+
+            resolve(slot);
+          } catch (e) {
+            throw new Error(`Error checking signature ${signature} - ${e}`);
           }
         },
         commitment,
