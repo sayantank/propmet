@@ -35,6 +35,7 @@ const solana = new Solana({
 // You can get your desired pool address from the API https://dlmm-api.meteora.ag/pair/all
 const JUP_SOL_POOL_ADDRESS = new PublicKey("FpjYwNjCStVE2Rvk9yVZsV46YwgNTFjp7ktJUDcZdyyk");
 const JUP_USDC_POOL_ADDRESS = new PublicKey("BhQEFZCRnWKQ21LEt4DUby7fKynfmLVJcNjfHNqjEF61");
+const MET_USDC_POOL_ADDRESS = new PublicKey("5hbf9JP8k5zdrZp9pokPypFQoBse5mGCmW6nqodurGcd");
 
 const JUP_SOL_PRICE_FEEDS = [
   // JUP-USD
@@ -49,6 +50,11 @@ const JUP_USDC_PRICE_FEEDS = [
   "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
 ];
 
+const MET_USDC_PRICE_FEEDS = [
+  // MET-USD
+  "0x0292e0f405bcd4a496d34e48307f6787349ad2bcd8505c3d3a9f77d81a67a682",
+];
+
 const POOL_CONFIGS: Record<string, { priceFeeds: string[]; poolAddress: PublicKey }> = {
   "jup/sol": {
     priceFeeds: JUP_SOL_PRICE_FEEDS,
@@ -57,6 +63,10 @@ const POOL_CONFIGS: Record<string, { priceFeeds: string[]; poolAddress: PublicKe
   "jup/usdc": {
     priceFeeds: JUP_USDC_PRICE_FEEDS,
     poolAddress: JUP_USDC_POOL_ADDRESS,
+  },
+  "met/usdc": {
+    priceFeeds: MET_USDC_PRICE_FEEDS,
+    poolAddress: MET_USDC_POOL_ADDRESS,
   },
 };
 
@@ -70,7 +80,7 @@ if (!selectedPool) {
 const dlmm = await DLMM.create(solana.connection, selectedPool.poolAddress);
 
 const strategy = new Strategy(solana, dlmm, userKeypair, {
-  spread: 20, // determines how many bins around active_bin to put liquidity in
+  spread: 500, // determines how many bins around active_bin to put liquidity in
   acceptableDelta: 2000, // Determines when to rebalance the inventory. If the difference between the base and quote tokens is greater than this threshold, the inventory will be rebalanced.
   type: StrategyType.BidAsk, //Concentrate liquidity around oracle price
   rebalanceBinThreshold: 2000, // Determines when to rebalance the position. If the market price is more than this threshold away from the center of our position, the position will be rebalanced.
@@ -88,7 +98,7 @@ eventSource.onmessage = async (event) => {
     const marketPrice =
       eventData.length > 1
         ? eventData[0].price.price / eventData[1].price.price
-        : eventData[0].price.price;
+        : eventData[0].price.price / 10 ** (-1 * eventData[0].price.expo);
 
     await strategy.run(marketPrice);
   } catch (error) {

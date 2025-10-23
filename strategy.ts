@@ -106,6 +106,8 @@ export class Strategy {
       if (this.noThresholdCounter % 10 === 0) {
         console.log("Threshold not crossed, no action needed", {
           marketPriceBinId,
+          lowerThresholdBin,
+          upperThresholdBin,
           shift:
             marketPriceBinId < positionMidBin
               ? (marketPriceBinId - positionMidBin) / halfRange
@@ -316,6 +318,7 @@ export class Strategy {
     const quoteBalanceNoRent = this.quoteToken.mint.equals(SOL_MINT)
       ? quoteBalance - 100000000
       : quoteBalance;
+
     const baseValue = (baseBalanceNoRent / 10 ** this.baseToken.decimals) * price; // Value of base tokens in terms of quote token
     const quoteValue = quoteBalanceNoRent / 10 ** this.quoteToken.decimals;
 
