@@ -30,6 +30,7 @@ const userKeypair = Keypair.fromSecretKey(Uint8Array.from(secretKey));
 const solana = new Solana({
   read: process.env.READ_RPC_URL!,
   write: process.env.WRITE_RPC_URL!,
+  ws: process.env.WS_RPC_URL!,
 });
 
 // You can get your desired pool address from the API https://dlmm-api.meteora.ag/pair/all

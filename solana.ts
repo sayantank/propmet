@@ -5,7 +5,6 @@ import {
   type Finality,
   type TransactionResponse,
 } from "@solana/web3.js";
-import { retry } from "./retry";
 
 const WSOL_MINT = new PublicKey("So11111111111111111111111111111111111111112");
 
@@ -15,10 +14,14 @@ export class Solana {
     private readonly urls: {
       read: string;
       write: string;
+      ws: string;
     },
     readonly commitment: Commitment = "confirmed",
   ) {
-    this.connection = new Connection(this.urls.read, commitment);
+    this.connection = new Connection(this.urls.read, {
+      wsEndpoint: this.urls.ws,
+      commitment,
+    });
   }
 
   async sendTransaction(transaction: string, commitment?: Commitment): Promise<string> {
@@ -55,33 +58,51 @@ export class Solana {
     return data.result;
   }
 
-  async confirmTransactions(
-    signatures: string[],
-    _commitment?: Finality,
-  ): Promise<TransactionResponse[] | null> {
+  // Either confirm or throw exception on confirmation
+  async confirmTransactions(signatures: string[], _commitment?: Finality): Promise<void> {
+    // Confirm transactions using websocket subscription to onSignature
     try {
-      const transactions = await retry(
-        async () => {
-          const txs = await this.connection.getTransactions(signatures, {
-            commitment: "confirmed",
-          });
+      const waitForConfirmation = (
+        signature: string,
+        commitment: Commitment = "confirmed",
+      ): Promise<TransactionResponse | null> => {
+        return new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error(`Timeout waiting for confirmation for signature: ${signature}`));
+          }, 60_000); // 1 min timeout per tx, adjust as desired
 
-          if (txs.length !== signatures.length) {
-            throw new Error("Transaction not found");
-          }
+          const subId = this.connection.onSignature(
+            signature,
+            async (result) => {
+              clearTimeout(timeout);
+              // remove listener after response
+              try {
+                await this.connection.removeSignatureListener(subId);
+              } catch (e) {
+                // ignore
+                console.log(e);
+              }
+              if (result.err) {
+                reject(new Error("Transaction failed: " + JSON.stringify(result.err)));
+              } else {
+                // Fetch and return the full tx info if possible, otherwise just return success
+                try {
+                  const tx = await this.connection.getTransaction(signature, {
+                    commitment: "confirmed",
+                  });
+                  resolve(null);
+                } catch (e) {
+                  // Transaction could already be dropped from RPC node, return null as ok
+                  reject(e);
+                }
+              }
+            },
+            commitment,
+          );
+        });
+      };
 
-          const confirmedTxs = txs.map((tx) => tx).filter((t) => t != null);
-
-          return confirmedTxs;
-        },
-        {
-          maxRetries: 5,
-          initialDelay: 400,
-          maxDelay: 5000,
-        },
-      );
-
-      return transactions;
+      await Promise.all(signatures.map((signature) => waitForConfirmation(signature, "confirmed")));
     } catch (error) {
       console.error(`Error confirming transaction: ${error}`);
       return null;

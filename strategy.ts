@@ -254,10 +254,12 @@ export class Strategy {
     });
 
     createPositionTx.partialSign(this.userKeypair, positionKeypair);
+    const start = Date.now();
     const createBalancePositionTxHash = await this.solana.sendTransaction(
       createPositionTx.serialize().toString("base64"),
     );
     await this.solana.confirmTransactions([createBalancePositionTxHash]);
+    console.log(`Total ${Date.now() - start}ms`);
 
     console.log(
       "Opened position",
