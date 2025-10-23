@@ -1,4 +1,4 @@
-import { Connection, PublicKey, type Commitment, type Finality } from "@solana/web3.js";
+import { Connection, PublicKey, type Commitment } from "@solana/web3.js";
 
 const WSOL_MINT = new PublicKey("So11111111111111111111111111111111111111112");
 
@@ -53,7 +53,7 @@ export class Solana {
   }
 
   // Either confirm or throw exception on confirmation
-  async confirmTransactions(signatures: string[], _commitment?: Finality): Promise<void> {
+  async confirmTransactions(signatures: string[]): Promise<void> {
     // Confirm transactions using websocket subscription to onSignature
     try {
       await Promise.all(
@@ -72,7 +72,7 @@ export class Solana {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error(`Timeout waiting for confirmation for signature: ${signature}`));
-      }, 60_000); // 1 min timeout per tx, adjust as desired
+      }, 60_000); // 1 min timeout per tx. More or less 150 blocks (validity of blockhash)
 
       const subId = this.connection.onSignature(
         signature,
@@ -86,8 +86,11 @@ export class Solana {
             console.log(e);
           }
           if (result.err) {
-            reject(new Error(`Transaction failed: ${JSON.stringify(result.err)}`));
-            // Fetch and return the full tx info if possible, otherwise just return success
+            console.log(
+              `Transaction failed on websocket subscription: ${JSON.stringify(result.err)}`,
+            );
+            console.log("Fallback to RPC read");
+            // Fetch the transaction on RPC, if found, resolve, else throw error
             try {
               const tx = await this.connection.getTransaction(signature, {
                 commitment: "confirmed",
@@ -96,9 +99,9 @@ export class Solana {
                 reject(new Error("Transaction not found"));
               }
               resolve();
-            } catch (e2) {
+            } catch (e) {
               // Transaction could already be dropped from RPC node, return null as ok
-              reject(e2);
+              reject(e);
             }
           } else {
             resolve();
