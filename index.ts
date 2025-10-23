@@ -1,13 +1,18 @@
 import DLMM, { StrategyType } from "@meteora-ag/dlmm";
 import { HermesClient } from "@pythnetwork/hermes-client";
-import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+import { Keypair, PublicKey } from "@solana/web3.js";
 import { Strategy } from "./strategy";
 import "dotenv/config";
+import { Solana } from "./solana";
 
 const hermes = new HermesClient("https://hermes.pyth.network", {});
 
-if (!process.env.RPC_URL) {
-  throw new Error("RPC_URL environment variable is not set.");
+if (!process.env.READ_RPC_URL) {
+  throw new Error("READ_RPC_URL environment variable is not set.");
+}
+
+if (!process.env.WRITE_RPC_URL) {
+  throw new Error("WRITE_RPC_URL environment variable is not set.");
 }
 
 if (!process.env.SECRET_KEY) {
@@ -22,7 +27,10 @@ const secretKey = Uint8Array.from(process.env.SECRET_KEY.split(",").map((v) => N
 
 const userKeypair = Keypair.fromSecretKey(Uint8Array.from(secretKey));
 
-const connection = new Connection(process.env.RPC_URL, "confirmed");
+const solana = new Solana({
+  read: process.env.READ_RPC_URL!,
+  write: process.env.WRITE_RPC_URL!,
+});
 
 // You can get your desired pool address from the API https://dlmm-api.meteora.ag/pair/all
 const JUP_SOL_POOL_ADDRESS = new PublicKey("FpjYwNjCStVE2Rvk9yVZsV46YwgNTFjp7ktJUDcZdyyk");
@@ -59,9 +67,9 @@ if (!selectedPool) {
   );
 }
 
-const dlmm = await DLMM.create(connection, selectedPool.poolAddress);
+const dlmm = await DLMM.create(solana.connection, selectedPool.poolAddress);
 
-const strategy = new Strategy(connection, dlmm, userKeypair, {
+const strategy = new Strategy(solana, dlmm, userKeypair, {
   spread: 20, // determines how many bins around active_bin to put liquidity in
   acceptableDelta: 2000, // Determines when to rebalance the inventory. If the difference between the base and quote tokens is greater than this threshold, the inventory will be rebalanced.
   type: StrategyType.BidAsk, //Concentrate liquidity around oracle price

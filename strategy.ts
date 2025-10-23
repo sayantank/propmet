@@ -1,11 +1,6 @@
 import DLMM, { type StrategyType, type LbPosition } from "@meteora-ag/dlmm";
-import {
-  Keypair,
-  sendAndConfirmTransaction,
-  type Connection,
-  type PublicKey,
-} from "@solana/web3.js";
-import { getTokenBalance } from "./solana";
+import { Keypair, type PublicKey } from "@solana/web3.js";
+import { getTokenBalance, type Solana } from "./solana";
 import { BN } from "bn.js";
 import { SOL_MINT } from "./const";
 import { executeJupUltraOrder, getJupUltraOrder } from "./jup-utils";
@@ -36,7 +31,7 @@ export class Strategy {
   private noThresholdCounter = 0;
 
   constructor(
-    private readonly connection: Connection,
+    private readonly solana: Solana,
     private readonly dlmm: DLMM,
     private readonly userKeypair: Keypair,
     private readonly config: StrategyConfig,
@@ -162,30 +157,17 @@ export class Strategy {
 
     const txs: string[] = [];
     for (const tx of removeLiquidityTxs) {
-      const sig = await sendAndConfirmTransaction(this.connection, tx, [this.userKeypair], {
-        skipPreflight: false,
-        commitment: "confirmed",
-      });
+      tx.partialSign(this.userKeypair);
+      const sig = await this.solana.sendTransaction(tx.serialize().toString("base64"));
       txs.push(sig);
     }
 
-    const maxLandedSlot = await retry(
-      async () => {
-        const txObjects = await this.connection.getTransactions(txs, {
-          commitment: "confirmed",
-        });
+    const confirmedTxs = await this.solana.confirmTransactions(txs);
 
-        const maxSlot = Math.max(...txObjects.map((t) => t?.slot!));
-        return maxSlot;
-      },
-      {
-        maxRetries: 5,
-        initialDelay: 500,
-        maxDelay: 5000,
-      },
-    );
-
-    console.log("maxLandedSlot: ", maxLandedSlot);
+    const maxLandedSlot = confirmedTxs ? Math.max(...confirmedTxs.map((tx) => tx.slot!)) : null;
+    if (maxLandedSlot == null) {
+      throw new Error("Failed to confirm transactions");
+    }
 
     this.position = await this.createPosition(marketPrice, maxLandedSlot);
   }
@@ -264,15 +246,14 @@ export class Strategy {
       totalXAmount: new BN(baseBalance),
       totalYAmount: new BN(quoteBalance),
       user: this.userKeypair.publicKey,
-      slippage: 0.5, // Liquiditidy slippage when adding liquidity to
+      slippage: 2, // Liquiditidy slippage when adding liquidity to
     });
 
-    const createBalancePositionTxHash = await sendAndConfirmTransaction(
-      this.connection,
-      createPositionTx,
-      [this.userKeypair, positionKeypair],
-      { skipPreflight: false, commitment: "confirmed" },
+    createPositionTx.partialSign(this.userKeypair, positionKeypair);
+    const createBalancePositionTxHash = await this.solana.sendTransaction(
+      createPositionTx.serialize().toString("base64"),
     );
+    await this.solana.confirmTransactions([createBalancePositionTxHash]);
 
     console.log(
       "Opened position",
@@ -282,15 +263,20 @@ export class Strategy {
 
     const newPosition = await retry(
       async () => {
-        const newPositions = await this.dlmm.getPositionsByUserAndLbPair(
-          this.userKeypair.publicKey,
-        );
-        if (newPositions.userPositions.length === 0) {
+        const positions = await this.dlmm.getPositionsByUserAndLbPair(this.userKeypair.publicKey);
+        if (positions.userPositions.length === 0) {
           throw new Error("Position not found");
         }
-        return newPositions.userPositions.find((position) =>
+
+        const latestPosition = positions.userPositions.find((position) =>
           position.publicKey.equals(positionKeypair.publicKey),
-        )!;
+        );
+
+        if (latestPosition == null) {
+          throw new Error("Position not found");
+        }
+
+        return latestPosition;
       },
       {
         initialDelay: 500,
@@ -310,13 +296,13 @@ export class Strategy {
       getTokenBalance(
         this.userKeypair.publicKey,
         this.baseToken.mint,
-        this.connection,
+        this.solana.connection,
         minContextSlot,
       ),
       getTokenBalance(
         this.userKeypair.publicKey,
         this.quoteToken.mint,
-        this.connection,
+        this.solana.connection,
         minContextSlot,
       ),
     ]);
