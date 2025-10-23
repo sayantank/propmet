@@ -53,7 +53,11 @@ export class Solana {
   }
 
   // Either confirm or throw exception on confirmation
-  async confirmTransactions(signatures: string[]): Promise<number[]> {
+  async confirmTransactions(signatures: string[]): Promise<
+    {
+      slot: number;
+    }[]
+  > {
     // Confirm transactions using websocket subscription to onSignature
     try {
       const slotResults = await Promise.all(
@@ -69,7 +73,7 @@ export class Solana {
   private waitForConfirmation(
     signature: string,
     commitment: Commitment = "confirmed",
-  ): Promise<number | null> {
+  ): Promise<{ slot: number } | null> {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error(`Timeout waiting for confirmation for signature: ${signature}`));
@@ -86,7 +90,7 @@ export class Solana {
               throw new Error(`Error checking signature ${signature} - ${result.error}`);
             }
 
-            resolve(slot);
+            resolve({ slot });
           } catch (e) {
             throw new Error(`Error checking signature ${signature} - ${e}`);
           }
