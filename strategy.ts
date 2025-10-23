@@ -5,6 +5,7 @@ import { BN } from "bn.js";
 import { SOL_MINT } from "./const";
 import { executeJupUltraOrder, getJupUltraOrder } from "./jup-utils";
 import { retry } from "./retry";
+import { logInventory } from "./fs";
 
 export type StrategyConfig = {
   spread: number; // in basis points
@@ -233,6 +234,8 @@ export class Strategy {
       totalBaseAmount: baseBalance,
       totalQuoteAmount: quoteBalance,
     });
+
+    await logInventory(this.dlmm, inventory);
 
     const positionKeypair = Keypair.generate();
 
