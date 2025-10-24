@@ -45,14 +45,6 @@ export class WebSocketClient {
     });
   }
 
-  send(message: any): void {
-    if (this.socket?.readyState === WebSocket.OPEN) {
-      this.socket.send(JSON.stringify(message));
-    } else {
-      console.warn("⚠️ WebSocket not connected. Message not sent:", message);
-    }
-  }
-
   private handleMessage(message: any): void {
     if (this.callbacks.onMessageCallback != null) {
       this.callbacks.onMessageCallback(message);
