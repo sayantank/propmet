@@ -1,12 +1,10 @@
 import DLMM, { StrategyType } from "@meteora-ag/dlmm";
-import { HermesClient } from "@pythnetwork/hermes-client";
 import { Keypair, PublicKey } from "@solana/web3.js";
 import { Strategy } from "./strategy";
 import "dotenv/config";
 import { Solana } from "./solana";
 import { WebSocketClient } from "./ws";
-
-const hermes = new HermesClient("https://hermes.pyth.network", {});
+import { HermesClient } from "@pythnetwork/hermes-client";
 
 if (!process.env.READ_RPC_URL) {
   throw new Error("READ_RPC_URL environment variable is not set.");
@@ -57,31 +55,28 @@ const MET_USDC_PRICE_FEEDS = [
   "0x0292e0f405bcd4a496d34e48307f6787349ad2bcd8505c3d3a9f77d81a67a682",
 ];
 
-const POOL_CONFIGS: Record<string, { priceFeeds: string[]; poolAddress: PublicKey }> = {
-  "jup/sol": {
-    priceFeeds: JUP_SOL_PRICE_FEEDS,
-    poolAddress: JUP_SOL_POOL_ADDRESS,
-  },
+const POOL_CONFIGS: Record<
+  string,
+  { priceFeeds: string[]; poolAddress: PublicKey; binanceFeed?: string }
+> = {
   "jup/usdc": {
     priceFeeds: JUP_USDC_PRICE_FEEDS,
     poolAddress: JUP_USDC_POOL_ADDRESS,
+    binanceFeed: "metusdt",
   },
   "met/usdc": {
     priceFeeds: MET_USDC_PRICE_FEEDS,
     poolAddress: MET_USDC_POOL_ADDRESS,
+    binanceFeed: "metusdt",
   },
 };
 
 const selectedPool = POOL_CONFIGS[process.env.POOL!];
-if (!selectedPool) {
+if (!selectedPool || selectedPool.binanceFeed == null) {
   throw new Error(
     `Pool ${process.env.POOL} not found. Available pools are: ${Object.keys(POOL_CONFIGS).join(", ")}`,
   );
 }
-
-// Connection resets every 24h
-const ws = new WebSocketClient("wss://fstream.binance.com/ws/fluidusdt@markPrice");
-ws.connect();
 
 const dlmm = await DLMM.create(solana.connection, selectedPool.poolAddress);
 
@@ -92,32 +87,55 @@ const strategy = new Strategy(solana, dlmm, userKeypair, {
   rebalanceBinThreshold: 1000, // Determines when to rebalance the position. If the market price is more than this threshold away from the center of our position, the position will be rebalanced.
 });
 
-const eventSource = await hermes.getPriceUpdatesStream(selectedPool.priceFeeds, {
-  parsed: true,
-});
+if (process.env.ORACLE_MODE != null && process.env.ORACLE_MODE === "binance") {
+  console.log("Starting propmet with Binace Price Feed");
+  // Connection resets every 24h - Also, it is just for binance futures as many assets
+  // do not have spot (i.e met, jup, ...)
+  const ws = new WebSocketClient("wss://fstream.binance.com/ws/metusdt@markPrice", {
+    onMessageCallback: async (message: {
+      e: string; // Event type
+      E: number; // Event time
+      s: string; // Symbol
+      p: string; // Mark price
+      i: string; // Index price
+      P: string; // Estimated Settle Price
+      r: string; // Funding rate
+      T: number; // Next funding time
+    }) => {
+      // Example of extracting the mark price (as number)
+      const markPrice = Number.parseFloat(message.p);
+      console.log(`[WebSocket] ${message.s} mark price update:`, markPrice);
+      await strategy.run(Number(message.p));
+    },
+  });
 
-eventSource.onmessage = async (event) => {
-  try {
-    const eventData = JSON.parse(event.data).parsed;
+  ws.connect();
+}
 
-    // NOTE: We have to make sure the `[0]` is the base token and `[1]` is the quote token
-    const marketPrice =
-      eventData.length > 1
-        ? eventData[0].price.price / eventData[1].price.price
-        : eventData[0].price.price / 10 ** (-1 * eventData[0].price.expo);
+if (process.env.ORACLE_MODE != null && process.env.ORACLE_MODE === "hermes") {
+  console.log("Starting propmet with Pyth Hermes Feed");
 
-    await strategy.run(marketPrice);
-  } catch (error) {
-    console.error("Error parsing event data:", error);
-    throw error;
-  }
-};
+  const hermes = new HermesClient("https://hermes.pyth.network", {});
 
-eventSource.onerror = (error) => {
-  console.error("Error receiving updates:", error);
-  eventSource.close();
-};
-
-// await sleep(10000);
-
-// eventSource.close();
+  const eventSource = await hermes.getPriceUpdatesStream(selectedPool.priceFeeds, {
+    parsed: true,
+  });
+  eventSource.onmessage = async (event) => {
+    try {
+      const eventData = JSON.parse(event.data).parsed;
+      // NOTE: We have to make sure the `[0]` is the base token and `[1]` is the quote token
+      const marketPrice =
+        eventData.length > 1
+          ? eventData[0].price.price / eventData[1].price.price
+          : eventData[0].price.price / 10 ** (-1 * eventData[0].price.expo);
+      await strategy.run(marketPrice);
+    } catch (error) {
+      console.error("Error parsing event data:", error);
+      throw error;
+    }
+  };
+  eventSource.onerror = (error) => {
+    console.error("Error receiving updates:", error);
+    eventSource.close();
+  };
+}

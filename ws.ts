@@ -1,12 +1,16 @@
-// 🌟 Basic WebSocket connection
-// client.ts - Browser WebSocket client
 export class WebSocketClient {
   private socket: WebSocket | null = null;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
 
-  constructor(private url: string) {}
+  constructor(
+    private url: string,
+    private callbacks: {
+      onMessageCallback?: (message: any) => void;
+      onErrorCallback?: (message: any) => void;
+    },
+  ) {}
 
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -14,15 +18,16 @@ export class WebSocketClient {
 
       this.socket = new WebSocket(this.url);
 
-      this.socket.onopen = (event) => {
+      this.socket.onopen = (_event) => {
         console.log("✅ WebSocket connection established!");
         this.reconnectAttempts = 0;
         resolve();
       };
 
       this.socket.onmessage = (event) => {
-        console.log("📨 Message received:", event.data);
-        this.handleMessage(JSON.parse(event.data));
+        // console.log("📨 Message received:", event.data);
+        const parsedMessage = JSON.parse(event.data);
+        this.handleMessage(parsedMessage);
       };
 
       this.socket.onclose = (event) => {
@@ -32,6 +37,9 @@ export class WebSocketClient {
 
       this.socket.onerror = (error) => {
         console.error("❌ WebSocket error:", error);
+        if (this.callbacks.onErrorCallback != null) {
+          this.callbacks.onErrorCallback(error);
+        }
         reject(error);
       };
     });
@@ -46,8 +54,9 @@ export class WebSocketClient {
   }
 
   private handleMessage(message: any): void {
-    // Override in subclasses or provide callback
-    console.log("📥 Handling message:", message);
+    if (this.callbacks.onMessageCallback != null) {
+      this.callbacks.onMessageCallback(message);
+    }
   }
 
   private handleReconnect(): void {
