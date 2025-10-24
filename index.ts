@@ -4,6 +4,7 @@ import { Keypair, PublicKey } from "@solana/web3.js";
 import { Strategy } from "./strategy";
 import "dotenv/config";
 import { Solana } from "./solana";
+import { WebSocketClient } from "./ws";
 
 const hermes = new HermesClient("https://hermes.pyth.network", {});
 
@@ -77,6 +78,10 @@ if (!selectedPool) {
     `Pool ${process.env.POOL} not found. Available pools are: ${Object.keys(POOL_CONFIGS).join(", ")}`,
   );
 }
+
+// Connection resets every 24h
+const ws = new WebSocketClient("wss://fstream.binance.com/ws/fluidusdt@markPrice");
+ws.connect();
 
 const dlmm = await DLMM.create(solana.connection, selectedPool.poolAddress);
 
