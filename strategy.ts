@@ -105,15 +105,20 @@ export class Strategy {
       });
     } else {
       if (this.noThresholdCounter % 10 === 0) {
-        console.log("Threshold not crossed, no action needed", {
-          marketPriceBinId,
-          lowerThresholdBin,
-          upperThresholdBin,
-          shift:
-            marketPriceBinId < positionMidBin
-              ? (marketPriceBinId - positionMidBin) / halfRange
-              : (positionMidBin - marketPriceBinId) / halfRange,
-        });
+        const rand = Math.random();
+        console.log(
+          `Threshold not crossed, no action needed ${rand < 0.33 ? "🎯" : rand < 0.5 ? "✨" : "🚀"}`,
+          {
+            marketPriceBinId,
+            lowerThresholdBin,
+            upperThresholdBin,
+            shift:
+              marketPriceBinId < positionMidBin
+                ? (marketPriceBinId - positionMidBin) / halfRange
+                : (positionMidBin - marketPriceBinId) / halfRange,
+          },
+        );
+        console.log("================================================");
       }
       this.noThresholdCounter++;
     }
