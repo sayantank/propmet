@@ -63,41 +63,48 @@ export class Solana {
       const slotResults = await Promise.all(
         signatures.map((signature) => this.waitForConfirmation(signature, "confirmed")),
       );
-      return slotResults.filter((e) => e != null);
+      return slotResults;
     } catch (error) {
       throw new Error(`Error confirming transaction: ${error}`);
       // Type should be void, not return a value
     }
   }
 
-  private waitForConfirmation(
+  private async waitForConfirmation(
     signature: string,
     commitment: Commitment = "confirmed",
-  ): Promise<{ slot: number } | null> {
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error(`Timeout waiting for confirmation for signature: ${signature}`));
-      }, 60_000); // 1 min timeout per tx. More or less 150 blocks (validity of blockhash)
+  ): Promise<{ slot: number }> {
+    let subId: number | undefined;
 
-      const subId = this.connection.onSignature(
+    const signaturePromise = new Promise<{ slot: number }>((resolve, reject) => {
+      subId = this.connection.onSignature(
         signature,
-        async (result: any, slot: any) => {
-          clearTimeout(timeout);
-          // remove listener after response
-          try {
-            await this.connection.removeSignatureListener(subId);
-            if (result.error != null) {
-              throw new Error(`Error checking signature ${signature} - ${result.error}`);
-            }
-
+        (result: any, slot: any) => {
+          if (result.error != null) {
+            reject(new Error(`Error checking signature ${signature} - ${result.error}`));
+          } else {
             resolve({ slot });
-          } catch (e) {
-            throw new Error(`Error checking signature ${signature} - ${e}`);
           }
         },
         commitment,
       );
     });
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`Timeout waiting for confirmation for signature: ${signature}`));
+      }, 60_000); // 1 min timeout per tx. More or less 150 blocks (validity of blockhash)
+    });
+
+    try {
+      const result = await Promise.race([signaturePromise, timeoutPromise]);
+      return result;
+    } finally {
+      // Always cleanup the listener, whether we succeeded, timed out, or errored
+      if (subId !== undefined) {
+        await this.connection.removeSignatureListener(subId);
+      }
+    }
   }
 }
 
