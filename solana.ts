@@ -1,11 +1,4 @@
-import {
-  Connection,
-  PublicKey,
-  type Commitment,
-  type Finality,
-  type TransactionResponse,
-} from "@solana/web3.js";
-import { retry } from "./retry";
+import { Connection, PublicKey, type Commitment } from "@solana/web3.js";
 
 const WSOL_MINT = new PublicKey("So11111111111111111111111111111111111111112");
 
@@ -15,10 +8,14 @@ export class Solana {
     private readonly urls: {
       read: string;
       write: string;
+      ws: string;
     },
     readonly commitment: Commitment = "confirmed",
   ) {
-    this.connection = new Connection(this.urls.read, commitment);
+    this.connection = new Connection(this.urls.read, {
+      wsEndpoint: this.urls.ws,
+      commitment,
+    });
   }
 
   async sendTransaction(transaction: string, commitment?: Commitment): Promise<string> {
@@ -55,36 +52,58 @@ export class Solana {
     return data.result;
   }
 
-  async confirmTransactions(
-    signatures: string[],
-    _commitment?: Finality,
-  ): Promise<TransactionResponse[] | null> {
+  // Either confirm or throw exception on confirmation
+  async confirmTransactions(signatures: string[]): Promise<
+    {
+      slot: number;
+    }[]
+  > {
+    // Confirm transactions using websocket subscription to onSignature
     try {
-      const transactions = await retry(
-        async () => {
-          const txs = await this.connection.getTransactions(signatures, {
-            commitment: "confirmed",
-          });
-
-          if (txs.length !== signatures.length) {
-            throw new Error("Transaction not found");
-          }
-
-          const confirmedTxs = txs.map((tx) => tx).filter((t) => t != null);
-
-          return confirmedTxs;
-        },
-        {
-          maxRetries: 5,
-          initialDelay: 400,
-          maxDelay: 5000,
-        },
+      const slotResults = await Promise.all(
+        signatures.map((signature) => this.waitForConfirmation(signature, "confirmed")),
       );
-
-      return transactions;
+      return slotResults;
     } catch (error) {
-      console.error(`Error confirming transaction: ${error}`);
-      return null;
+      throw new Error(`Error confirming transaction: ${error}`);
+      // Type should be void, not return a value
+    }
+  }
+
+  private async waitForConfirmation(
+    signature: string,
+    commitment: Commitment = "confirmed",
+  ): Promise<{ slot: number }> {
+    let subId: number | undefined;
+
+    const signaturePromise = new Promise<{ slot: number }>((resolve, reject) => {
+      subId = this.connection.onSignature(
+        signature,
+        (result: any, slot: any) => {
+          if (result.error != null) {
+            reject(new Error(`Error checking signature ${signature} - ${result.error}`));
+          } else {
+            resolve({ slot });
+          }
+        },
+        commitment,
+      );
+    });
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`Timeout waiting for confirmation for signature: ${signature}`));
+      }, 60_000); // 1 min timeout per tx. More or less 150 blocks (validity of blockhash)
+    });
+
+    try {
+      const result = await Promise.race([signaturePromise, timeoutPromise]);
+      return result;
+    } finally {
+      // Always cleanup the listener, whether we succeeded, timed out, or errored
+      if (subId !== undefined) {
+        await this.connection.removeSignatureListener(subId);
+      }
     }
   }
 }
@@ -122,7 +141,7 @@ export async function getTokenBalance(
 
   const data: any = await response.json();
   if (data.result == null) {
-    throw new Error(`Failed to get token balance: ${data.error.message}`);
+    throw new Error(`Failed to get token balance: ${data.error?.message ?? "Unknown error"}`);
   }
 
   const tokenAccountBalance =
@@ -150,12 +169,12 @@ export async function getTokenBalance(
     const data: any = await response.json();
 
     if (data.result == null) {
-      throw new Error(`Failed to get sol balance: ${data.error.message}`);
+      throw new Error(`Failed to get sol balance: ${data.error?.message ?? "Unknown error"}`);
     }
 
     const solBalance = Number(data.result.value);
 
-    return Number(solBalance) + tokenAccountBalance;
+    return solBalance + tokenAccountBalance;
   }
 
   return tokenAccountBalance;
