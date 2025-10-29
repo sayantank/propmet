@@ -8,10 +8,10 @@ import { retry } from "./retry";
 import { logInventory } from "./fs";
 
 export type StrategyConfig = {
-  spread: number; // in basis points
-  acceptableDelta: number; // in basis points
+  priceRangeDelta: number; // in basis points
+  inventorySkewThreshold: number; // in basis points
   type: StrategyType;
-  rebalanceBinThreshold: number; // in basis points
+  rebalanceThreshold: number; // in basis points
 };
 
 export class Strategy {
@@ -84,7 +84,7 @@ export class Strategy {
     // calculate the bin ids for the thresholds
     const positionMidBin = this.position.positionData.lowerBinId + halfRange;
 
-    const numBinsThreshold = Math.floor(halfRange * (this.config.rebalanceBinThreshold / 10000));
+    const numBinsThreshold = Math.floor(halfRange * (this.config.rebalanceThreshold / 10000));
 
     const lowerThresholdBin = positionMidBin - numBinsThreshold;
     const upperThresholdBin = positionMidBin + numBinsThreshold;
@@ -196,8 +196,8 @@ export class Strategy {
     const basePositionValue = (baseBalance / 10 ** this.baseToken.decimals) * marketPrice;
     const quotePositionValue = quoteBalance / 10 ** this.quoteToken.decimals;
 
-    const minBinPrice = marketPrice * (1 - this.config.spread / 10000);
-    const maxBinPrice = marketPrice * (1 + this.config.spread / 10000);
+    const minBinPrice = marketPrice * (1 - this.config.priceRangeDelta / 10000);
+    const maxBinPrice = marketPrice * (1 + this.config.priceRangeDelta / 10000);
 
     const minBinId = this.dlmm.getBinIdFromPrice(
       Number(
@@ -212,7 +212,6 @@ export class Strategy {
       false,
     );
 
-    // Check if market price bin id has crossed rebalance bin threshold
     const marketPriceBinId = this.dlmm.getBinIdFromPrice(
       Number(
         DLMM.getPricePerLamport(this.baseToken.decimals, this.quoteToken.decimals, marketPrice),
@@ -350,7 +349,7 @@ export class Strategy {
     // Check ratio for inventory assets
     const difference = Math.abs(1 - baseValue / quoteValue);
 
-    if (difference > this.config.acceptableDelta / 10000) {
+    if (difference > this.config.inventorySkewThreshold / 10000) {
       console.log(`Discrepancy of ${difference} found, rebalancing...`);
 
       const { inputMint, outputMint, inputDecimals } =
