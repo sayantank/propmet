@@ -111,7 +111,3 @@ eventSource.onerror = (error) => {
   console.error("Error receiving updates:", error);
   eventSource.close();
 };
-
-// await sleep(10000);
-
-// eventSource.close();
