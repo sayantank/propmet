@@ -22,14 +22,9 @@ primary_region = 'ams'
     hard_limit = 100
     soft_limit = 80
 
-[[vm]]
+[vm]
   memory = '1gb'
   cpu_kind = 'shared'
   cpus = 1
-  # Ensure machine is never suspended
-  [vm]
-    memory = '1gb'
-    cpu_kind = 'shared'
-    cpus = 1
-    guest_suspend_enabled = false
-    idle_timeout = 0
+  guest_suspend_enabled = false
+  idle_timeout = 0
