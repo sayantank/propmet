@@ -11,13 +11,25 @@ primary_region = 'ams'
 [http_service]
   internal_port = 3000
   force_https = true
-  auto_stop_machines = 'off'
+  auto_stop_machines = false
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
   max_machines_running = 1
   processes = ['app']
+  # Prevent machine from being idled or suspended
+  [[http_service.concurrency]]
+    type = "connections"
+    hard_limit = 100
+    soft_limit = 80
 
 [[vm]]
   memory = '1gb'
   cpu_kind = 'shared'
   cpus = 1
+  # Ensure machine is never suspended
+  [vm]
+    memory = '1gb'
+    cpu_kind = 'shared'
+    cpus = 1
+    guest_suspend_enabled = false
+    idle_timeout = 0
