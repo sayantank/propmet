@@ -68,6 +68,7 @@ const solana = new Solana({
 const JUP_SOL_POOL_ADDRESS = new PublicKey("FpjYwNjCStVE2Rvk9yVZsV46YwgNTFjp7ktJUDcZdyyk");
 const JUP_USDC_POOL_ADDRESS = new PublicKey("BhQEFZCRnWKQ21LEt4DUby7fKynfmLVJcNjfHNqjEF61");
 const MET_USDC_POOL_ADDRESS = new PublicKey("5hbf9JP8k5zdrZp9pokPypFQoBse5mGCmW6nqodurGcd");
+const FLUID_SOL_POOL_ADDRESS = new PublicKey("4mPKhtkMtRXyQcgSjzog14nnonHowvLhB4fyVkMfSECA");
 
 const JUP_SOL_PRICE_FEEDS = [
   // JUP-USD
@@ -80,6 +81,12 @@ const JUP_USDC_PRICE_FEEDS = [
   "0x0a0408d619e9380abad35060f9192039ed5042fa6f82301d0e48bb52be830996",
   // USDC-USD
   "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+];
+const FLUID_SOL_PRICE_FEEDS = [
+  // FLUID-USD
+  "0x47d462d8bac4c29b6ae1792029b9b92c8adea12ed22155bfc22f481287f1e349",
+  // SOL-USD
+  "0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
 ];
 
 const MET_USDC_PRICE_FEEDS = [
@@ -100,13 +107,18 @@ const POOL_CONFIGS: Record<string, { priceFeeds: string[]; poolAddress: PublicKe
     priceFeeds: MET_USDC_PRICE_FEEDS,
     poolAddress: MET_USDC_POOL_ADDRESS,
   },
+  "fluid/sol": {
+    priceFeeds: FLUID_SOL_PRICE_FEEDS,
+    poolAddress: FLUID_SOL_POOL_ADDRESS,
+  },
 };
 
 const selectedPool = POOL_CONFIGS[process.env.POOL!];
 if (!selectedPool) {
-  throw new Error(
+  console.error(
     `Pool ${process.env.POOL} not found. Available pools are: ${Object.keys(POOL_CONFIGS).join(", ")}`,
   );
+  process.exit(1);
 }
 
 const dlmm = await DLMM.create(solana.connection, selectedPool.poolAddress);
