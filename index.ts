@@ -23,6 +23,37 @@ if (!process.env.POOL) {
   throw new Error("POOL environment variable is not set.");
 }
 
+if (!process.env.PRICE_RANGE_DELTA) {
+  throw new Error("PRICE_RANGE_DELTA environment variable is not set.");
+}
+
+if (!process.env.INVENTORY_SKEW_THRESHOLD) {
+  throw new Error("INVENTORY_SKEW_THRESHOLD environment variable is not set.");
+}
+
+if (!process.env.REBALANCE_THRESHOLD) {
+  throw new Error("REBALANCE_THRESHOLD environment variable is not set.");
+}
+
+if (!process.env.STRATEGY) {
+  throw new Error("STRATEGY_TYPE environment variable is not set.");
+}
+
+let strategyType: StrategyType = StrategyType.BidAsk;
+switch (process.env.STRATEGY) {
+  case "bidask":
+    strategyType = StrategyType.BidAsk;
+    break;
+  case "curve":
+    strategyType = StrategyType.Curve;
+    break;
+  case "spot":
+    strategyType = StrategyType.Spot;
+    break;
+  default:
+    throw new Error(`Invalid strategy: ${process.env.STRATEGY}`);
+}
+
 const secretKey = Uint8Array.from(process.env.SECRET_KEY.split(",").map((v) => Number(v.trim())));
 
 const userKeypair = Keypair.fromSecretKey(Uint8Array.from(secretKey));
@@ -81,10 +112,10 @@ if (!selectedPool) {
 const dlmm = await DLMM.create(solana.connection, selectedPool.poolAddress);
 
 const strategy = new Strategy(solana, dlmm, userKeypair, {
-  priceRangeDelta: 400, // determines how many bins around active_bin to put liquidity in
-  inventorySkewThreshold: 1500, // Determines when to rebalance the inventory. If the difference between the base and quote tokens is greater than this threshold, the inventory will be rebalanced.
-  type: StrategyType.Curve, //Concentrate liquidity around oracle price
-  rebalanceThreshold: 2000, // Determines when to rebalance the position. If the market price is more than this threshold away from the center of our position, the position will be rebalanced.
+  priceRangeDelta: Number(process.env.PRICE_RANGE_DELTA!), // determines how many bins around active_bin to put liquidity in
+  inventorySkewThreshold: Number(process.env.INVENTORY_SKEW_THRESHOLD!), // Determines when to rebalance the inventory. If the difference between the base and quote tokens is greater than this threshold, the inventory will be rebalanced.
+  type: strategyType, //Concentrate liquidity around oracle price
+  rebalanceThreshold: Number(process.env.REBALANCE_THRESHOLD!), // Determines when to rebalance the position. If the market price is more than this threshold away from the center of our position, the position will be rebalanced.
 });
 
 const eventSource = await hermes.getPriceUpdatesStream(selectedPool.priceFeeds, {
