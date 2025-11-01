@@ -2,6 +2,7 @@ import type { HermesClient } from "@pythnetwork/hermes-client";
 import type { Strategy } from "./strategy";
 import type { PublicKey } from "@solana/web3.js";
 import type { ErrorEvent } from "eventsource";
+import { retry } from "./retry";
 
 export async function onMessage(event: MessageEvent<any>, strategy: Strategy) {
   try {
@@ -27,35 +28,38 @@ export async function onError(
   strategy: Strategy,
 ) {
   console.error("Error receiving updates:", error);
-
-  // Attempt to reconnect after a short delay
   const reconnectDelay = 3000; // ms
 
-  console.log(`Attempting to reconnect in ${reconnectDelay / 1000} seconds...`);
+  // Attempt to reconnect after a short delay
+  await retry(
+    async () => {
+      console.log(`Attempting to reconnect in ${reconnectDelay / 1000} seconds...`);
 
-  // Remove previous listeners to prevent duplicating messages/reconnects
-  eventSource.onmessage = null;
-  eventSource.onerror = null;
-  eventSource.close();
+      // Remove previous listeners to prevent duplicating messages/reconnects
+      eventSource.onmessage = null;
+      eventSource.onerror = null;
+      eventSource.close();
 
-  setTimeout(async () => {
-    try {
-      const newEventSource = await hermes.getPriceUpdatesStream(selectedPool.priceFeeds, {
-        parsed: true,
-      });
+      try {
+        const newEventSource = await hermes.getPriceUpdatesStream(selectedPool.priceFeeds, {
+          parsed: true,
+        });
 
-      newEventSource.onmessage = async (event: MessageEvent<any>) => onMessage(event, strategy);
-      // Recursively use this handler for future errors
-      newEventSource.onerror = async (error: ErrorEvent) =>
-        onError(error, newEventSource, hermes, selectedPool, strategy);
+        newEventSource.onmessage = async (event: MessageEvent<any>) => onMessage(event, strategy);
 
-      // Optionally, replace the eventSource variable if you want to use it elsewhere
-      // eventSource = newEventSource;
-      console.log("Reconnected to price update stream.");
-      return newEventSource;
-    } catch (reconnectError) {
-      console.error("Failed to reconnect to price updates:", reconnectError);
-      // Optionally, retry again by calling this function recursively, or increase/bound retry attempts
-    }
-  }, reconnectDelay);
+        newEventSource.onerror = async (error: ErrorEvent) =>
+          onError(error, newEventSource, hermes, selectedPool, strategy);
+
+        console.log("Reconnected to price update stream.");
+        return newEventSource;
+      } catch (reconnectError) {
+        console.error("Failed to reconnect to price updates:", reconnectError);
+      }
+    },
+    {
+      initialDelay: reconnectDelay,
+      maxRetries: 3,
+      maxDelay: 12000,
+    },
+  );
 }
