@@ -28,7 +28,7 @@ export async function onError(
   strategy: Strategy,
 ) {
   console.error("Error receiving updates:", error);
-  const reconnectDelay = 3000; // ms
+  const reconnectDelay = 2000; // ms
 
   // Attempt to reconnect after a short delay
   await retry(
