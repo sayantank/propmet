@@ -4,6 +4,7 @@ import { Keypair, PublicKey } from "@solana/web3.js";
 import { Strategy } from "./strategy";
 import "dotenv/config";
 import { Solana } from "./solana";
+import { onError, onMessage } from "./handlers";
 
 const hermes = new HermesClient("https://hermes.pyth.network", {});
 
@@ -134,23 +135,6 @@ const eventSource = await hermes.getPriceUpdatesStream(selectedPool.priceFeeds, 
   parsed: true,
 });
 
-eventSource.onmessage = async (event) => {
-  try {
-    const eventData = JSON.parse(event.data).parsed;
+eventSource.onmessage = async (event) => onMessage(event, strategy);
 
-    // NOTE: We have to make sure the `[0]` is the base token and `[1]` is the quote token
-    const marketPrice =
-      eventData.length > 1
-        ? eventData[0].price.price / eventData[1].price.price
-        : eventData[0].price.price / 10 ** (-1 * eventData[0].price.expo);
-
-    await strategy.run(marketPrice);
-  } catch (error) {
-    console.error("Error parsing event data:", error);
-  }
-};
-
-eventSource.onerror = (error) => {
-  console.error("Error receiving updates:", error);
-  eventSource.close();
-};
+eventSource.onerror = async (error) => onError(error, eventSource, hermes, selectedPool, strategy);
